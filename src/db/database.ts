@@ -51,12 +51,14 @@ export async function fetchCurrency(userId: string): Promise<string> {
 export async function saveTransaction(
   txData: Omit<Transaction, 'id' | 'createdAt'> & { id?: number },
   userId: string
-): Promise<void> {
+): Promise<{ id?: number }> {
   const payload = { type: txData.type, amount: txData.amount, categoryId: txData.categoryId, date: txData.date, note: txData.note || '' };
   if (txData.id) {
     await apiUpdateTransaction(userId, txData.id, payload);
+    return {};
   } else {
-    await apiCreateTransaction(userId, payload);
+    const result = await apiCreateTransaction(userId, payload);
+    return { id: result.id };
   }
 }
 

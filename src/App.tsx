@@ -135,33 +135,60 @@ function AppContent() {
   const handleSaveTransaction = async (
     txData: Omit<Transaction, 'id' | 'createdAt'> & { id?: number }
   ) => {
-    await apiSaveTransaction(txData, userId);
-    await refreshTransactions();
+    if (txData.id) {
+      await apiSaveTransaction(txData, userId);
+      setAllTransactions((prev) =>
+        prev.map((t) =>
+          t.id === txData.id
+            ? { ...t, type: txData.type, amount: txData.amount, categoryId: txData.categoryId, date: txData.date, note: txData.note || '' }
+            : t
+        )
+      );
+    } else {
+      const result = await apiSaveTransaction(txData, userId);
+      const newTx: Transaction = {
+        id: result.id,
+        type: txData.type,
+        amount: txData.amount,
+        categoryId: txData.categoryId,
+        date: txData.date,
+        note: txData.note || '',
+        createdAt: Date.now(),
+      };
+      setAllTransactions((prev) => [newTx, ...prev]);
+    }
   };
 
   const handleDeleteTransaction = async (id: number) => {
+    setAllTransactions((prev) => prev.filter((t) => t.id !== id));
     await apiDeleteTransaction(id, userId);
-    await refreshTransactions();
   };
 
   const handleSaveBudget = async (categoryId: string, monthlyLimit: number) => {
+    setBudgets((prev) => {
+      const existing = prev.find((b) => b.categoryId === categoryId);
+      if (existing) {
+        return prev.map((b) => b.categoryId === categoryId ? { ...b, monthlyLimit } : b);
+      }
+      return [...prev, { id: categoryId, categoryId, monthlyLimit }];
+    });
     await apiSaveBudget(categoryId, monthlyLimit, userId);
-    await refreshBudgets();
   };
 
   const handleDeleteBudget = async (id: string) => {
+    setBudgets((prev) => prev.filter((b) => b.categoryId !== id));
     await apiDeleteBudget(id, userId);
-    await refreshBudgets();
   };
 
   const handleAddCategory = async (catData: Omit<Category, 'id'>) => {
+    const newCat: Category = { id: `cat_custom_${Date.now()}`, ...catData, isDefault: false };
+    setCategories((prev) => [...prev, newCat]);
     await apiAddCategory(catData, userId);
-    await refreshCategories();
   };
 
   const handleDeleteCategory = async (id: string) => {
+    setCategories((prev) => prev.filter((c) => c.id !== id));
     await apiDeleteCategory(id, userId);
-    await refreshCategories();
   };
 
   const handleUpdateCurrency = async (newCurrency: CurrencyCode) => {
