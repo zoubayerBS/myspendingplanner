@@ -27,6 +27,7 @@ import { BudgetManager } from './components/BudgetManager';
 import { CategoryManager } from './components/CategoryManager';
 import { SettingsView } from './components/SettingsView';
 import { AddTransactionModal } from './components/AddTransactionModal';
+import { PullToRefresh } from './components/PullToRefresh';
 
 function AppContent() {
   const { user, profile, loading: authLoading, logout } = useAuth();
@@ -303,6 +304,7 @@ function AppContent() {
         />
 
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 pb-20 md:pb-8 overflow-x-hidden">
+          <PullToRefresh onRefresh={refreshData}>
           {activeTab === 'dashboard' && (
             <Dashboard
               transactions={monthlyTransactions}
@@ -356,6 +358,7 @@ function AppContent() {
               onReloadData={refreshData}
             />
           )}
+          </PullToRefresh>
         </main>
       </div>
 
