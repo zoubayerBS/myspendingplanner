@@ -1,5 +1,6 @@
 import React from 'react';
-import { LayoutDashboard, ArrowLeftRight, PieChart, Tag, SlidersHorizontal, Plus, Wallet } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, PieChart, Tag, SlidersHorizontal, Plus, Wallet, LogOut, Shield } from 'lucide-react';
+import { AuthUser } from '../db/auth';
 
 export type TabType = 'dashboard' | 'transactions' | 'budgets' | 'categories' | 'settings';
 
@@ -7,15 +8,19 @@ interface NavigationProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   onOpenQuickAdd: () => void;
+  onLogout: () => void;
+  onAdmin: () => void;
+  user: AuthUser;
+  isAdmin?: boolean;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab, onOpenQuickAdd }) => {
+export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab, onOpenQuickAdd, onLogout, onAdmin, user, isAdmin }) => {
   const navItems = [
     { id: 'dashboard' as TabType, label: 'Accueil', icon: LayoutDashboard },
     { id: 'transactions' as TabType, label: 'Transactions', icon: ArrowLeftRight },
     { id: 'budgets' as TabType, label: 'Budgets', icon: PieChart },
     { id: 'categories' as TabType, label: 'Categories', icon: Tag },
-    { id: 'settings' as TabType, label: 'Reglages', icon: SlidersHorizontal }
+    { id: 'settings' as TabType, label: 'Reglages', icon: SlidersHorizontal },
   ];
 
   return (
@@ -39,6 +44,15 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab,
               </button>
             );
           })}
+          {isAdmin && (
+            <button
+              onClick={onAdmin}
+              className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors text-blue-500"
+            >
+              <Shield className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Admin</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -88,6 +102,28 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab,
             );
           })}
         </nav>
+
+        <div className="border-t border-slate-100 pt-4 mt-4 space-y-2">
+          <div className="px-3">
+            <p className="text-xs text-slate-400 truncate">{user.email}</p>
+          </div>
+          {isAdmin && (
+            <button
+              onClick={onAdmin}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <Shield className="w-4 h-4" />
+              <span>Admin</span>
+            </button>
+          )}
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Se deconnecter</span>
+          </button>
+        </div>
       </aside>
     </>
   );

@@ -1,17 +1,19 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Wallet, LogOut } from 'lucide-react';
 import { formatMonthYear, getCurrentYearMonth } from '../utils/formatters';
 
 interface HeaderProps {
   selectedMonth: string;
   setSelectedMonth: (month: string) => void;
   isOffline?: boolean;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   selectedMonth,
   setSelectedMonth,
-  isOffline = false
+  isOffline = false,
+  onLogout,
 }) => {
   const currentMonthKey = getCurrentYearMonth();
   const isCurrentMonth = selectedMonth === currentMonthKey;
@@ -40,11 +42,22 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <span className="font-semibold text-lg text-[#1A1C1E] tracking-tight">SpendingPlanner</span>
             </div>
-            {isOffline && (
-              <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-                Offline
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {isOffline && (
+                <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                  Offline
+                </span>
+              )}
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  aria-label="Se deconnecter"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-center gap-1 px-4 pb-2.5">

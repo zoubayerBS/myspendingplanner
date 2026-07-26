@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import {
   initializeDatabase,
   fetchCategories,
@@ -16,6 +17,8 @@ import {
 import { Category, Transaction, Budget, CurrencyCode } from './types';
 import { getCurrentYearMonth } from './utils/formatters';
 
+import AuthView from './components/AuthView';
+import AdminView from './components/AdminView';
 import { Navigation, TabType } from './components/Navigation';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
@@ -25,7 +28,11 @@ import { CategoryManager } from './components/CategoryManager';
 import { SettingsView } from './components/SettingsView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 
-export default function App() {
+function AppContent() {
+  const { user, profile, loading: authLoading, logout } = useAuth();
+
+  const [showAdmin, setShowAdmin] = useState(false);
+
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentYearMonth());
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -38,23 +45,27 @@ export default function App() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>('DT');
 
+  const userId = user?.id || '';
+
   const refreshData = useCallback(async () => {
+    if (!userId) return;
     const [txs, cats, bgs, cur] = await Promise.all([
-      fetchTransactions(),
-      fetchCategories(),
-      fetchBudgets(),
-      fetchCurrency(),
+      fetchTransactions(userId),
+      fetchCategories(userId),
+      fetchBudgets(userId),
+      fetchCurrency(userId),
     ]);
     setAllTransactions(txs);
     setCategories(cats);
     setBudgets(bgs);
     setCurrency(cur as CurrencyCode);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
     async function setupApp() {
       try {
-        await initializeDatabase();
+        await initializeDatabase(userId);
         await refreshData();
         setIsReady(true);
       } catch (err) {
@@ -63,7 +74,9 @@ export default function App() {
       }
     }
     setupApp();
+  }, [userId, refreshData]);
 
+  useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
@@ -77,7 +90,7 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [refreshData]);
+  }, []);
 
   const monthlyTransactions = allTransactions.filter((t) =>
     t.date.startsWith(selectedMonth)
@@ -96,57 +109,106 @@ export default function App() {
   const handleSaveTransaction = async (
     txData: Omit<Transaction, 'id' | 'createdAt'> & { id?: number }
   ) => {
-    await apiSaveTransaction(txData);
+    await apiSaveTransaction(txData, userId);
     await refreshData();
   };
 
   const handleDeleteTransaction = async (id: number) => {
-    await apiDeleteTransaction(id);
+    await apiDeleteTransaction(id, userId);
     await refreshData();
   };
 
   const handleSaveBudget = async (categoryId: string, monthlyLimit: number) => {
-    await apiSaveBudget(categoryId, monthlyLimit);
+    await apiSaveBudget(categoryId, monthlyLimit, userId);
     await refreshData();
   };
 
   const handleDeleteBudget = async (id: string) => {
-    await apiDeleteBudget(id);
+    await apiDeleteBudget(id, userId);
     await refreshData();
   };
 
   const handleAddCategory = async (catData: Omit<Category, 'id'>) => {
-    await apiAddCategory(catData);
+    await apiAddCategory(catData, userId);
     await refreshData();
   };
 
   const handleDeleteCategory = async (id: string) => {
-    await apiDeleteCategory(id);
+    await apiDeleteCategory(id, userId);
     await refreshData();
   };
 
   const handleUpdateCurrency = async (newCurrency: CurrencyCode) => {
-    await apiUpdateCurrency(newCurrency);
+    await apiUpdateCurrency(newCurrency, userId);
     await refreshData();
   };
 
   const handleResetDatabase = async () => {
     const { nocodb, Tables } = await import('./db/nocodb');
+    const where = `where=(userId,eq,${userId})`;
     const [txs, cats, bgs, sts] = await Promise.all([
-      nocodb.listAll(Tables.transactions),
-      nocodb.listAll(Tables.categories),
-      nocodb.listAll(Tables.budgets),
-      nocodb.listAll(Tables.settings),
+      nocodb.listAll(Tables.transactions, where),
+      nocodb.listAll(Tables.categories, where),
+      nocodb.listAll(Tables.budgets, where),
+      nocodb.listAll(Tables.settings, where),
     ]);
     await Promise.all([
-      ...txs.map((r) => nocodb.remove(Tables.transactions, r.id)),
-      ...cats.map((r) => nocodb.remove(Tables.categories, r.id)),
-      ...bgs.map((r) => nocodb.remove(Tables.budgets, r.id)),
-      ...sts.map((r) => nocodb.remove(Tables.settings, r.id)),
+      ...txs.map((r) => nocodb.remove(Tables.transactions, r.Id)),
+      ...cats.map((r) => nocodb.remove(Tables.categories, r.Id)),
+      ...bgs.map((r) => nocodb.remove(Tables.budgets, r.Id)),
+      ...sts.map((r) => nocodb.remove(Tables.settings, r.Id)),
     ]);
-    await initializeDatabase();
+    await initializeDatabase(userId);
     await refreshData();
   };
+
+  const handleLogout = () => {
+    logout();
+    setAllTransactions([]);
+    setCategories([]);
+    setBudgets([]);
+    setIsReady(false);
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-4">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-slate-300 border-t-[#1B3022] rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-slate-400">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthView onNavigateToAdmin={() => setShowAdmin(true)} />;
+  }
+
+  if (showAdmin) {
+    return <AdminView onBack={() => setShowAdmin(false)} />;
+  }
+
+  if (!profile?.isActive) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="border-2 border-dashed border-orange-200 rounded-xl p-6">
+            <h1 className="text-lg font-semibold text-orange-700 mb-2">Compte en attente</h1>
+            <p className="text-sm text-gray-500 mb-4">
+              Votre compte est en attente d activation par l administrateur.
+            </p>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Se deconnecter
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isReady) {
     return (
@@ -165,6 +227,10 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenQuickAdd={handleOpenQuickAdd}
+        onLogout={handleLogout}
+        onAdmin={() => setShowAdmin(true)}
+        user={user}
+        isAdmin={profile?.role === 'admin'}
       />
 
       <div className="min-h-screen flex flex-col">
@@ -172,6 +238,7 @@ export default function App() {
           selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth}
           isOffline={isOffline}
+          onLogout={handleLogout}
         />
 
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 pb-20 md:pb-8">
@@ -222,6 +289,7 @@ export default function App() {
           {activeTab === 'settings' && (
             <SettingsView
               currency={currency}
+              userId={userId}
               onUpdateCurrency={handleUpdateCurrency}
               onResetDatabase={handleResetDatabase}
               onReloadData={refreshData}
@@ -239,5 +307,13 @@ export default function App() {
         currency={currency}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

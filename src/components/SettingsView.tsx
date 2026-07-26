@@ -5,6 +5,7 @@ import { nocodb, Tables } from '../db/nocodb';
 
 interface SettingsViewProps {
   currency: CurrencyCode;
+  userId: string;
   onUpdateCurrency: (c: CurrencyCode) => Promise<void>;
   onResetDatabase: () => Promise<void>;
   onReloadData: () => Promise<void>;
@@ -12,6 +13,7 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   currency,
+  userId,
   onUpdateCurrency,
   onResetDatabase,
   onReloadData
@@ -49,11 +51,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleExportJSON = async () => {
+    const where = `where=(userId,eq,${userId})`;
     const [transactions, categories, budgets, settings] = await Promise.all([
-      nocodb.listAll(Tables.transactions),
-      nocodb.listAll(Tables.categories),
-      nocodb.listAll(Tables.budgets),
-      nocodb.listAll(Tables.settings),
+      nocodb.listAll(Tables.transactions, where),
+      nocodb.listAll(Tables.categories, where),
+      nocodb.listAll(Tables.budgets, where),
+      nocodb.listAll(Tables.settings, where),
     ]);
 
     const backupData = {
@@ -88,22 +91,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const data = JSON.parse(text);
 
       if (data.transactions && Array.isArray(data.transactions)) {
-        const existing = await nocodb.listAll(Tables.transactions);
-        await Promise.all(existing.map((r) => nocodb.remove(Tables.transactions, r.id)));
+        const where = `where=(userId,eq,${userId})`;
+        const existing = await nocodb.listAll(Tables.transactions, where);
+        await Promise.all(existing.map((r) => nocodb.remove(Tables.transactions, r.Id)));
         if (data.transactions.length > 0) {
           await nocodb.createBulk(Tables.transactions, data.transactions);
         }
       }
       if (data.categories && Array.isArray(data.categories)) {
-        const existing = await nocodb.listAll(Tables.categories);
-        await Promise.all(existing.map((r) => nocodb.remove(Tables.categories, r.id)));
+        const where = `where=(userId,eq,${userId})`;
+        const existing = await nocodb.listAll(Tables.categories, where);
+        await Promise.all(existing.map((r) => nocodb.remove(Tables.categories, r.Id)));
         if (data.categories.length > 0) {
           await nocodb.createBulk(Tables.categories, data.categories);
         }
       }
       if (data.budgets && Array.isArray(data.budgets)) {
-        const existing = await nocodb.listAll(Tables.budgets);
-        await Promise.all(existing.map((r) => nocodb.remove(Tables.budgets, r.id)));
+        const where = `where=(userId,eq,${userId})`;
+        const existing = await nocodb.listAll(Tables.budgets, where);
+        await Promise.all(existing.map((r) => nocodb.remove(Tables.budgets, r.Id)));
         if (data.budgets.length > 0) {
           await nocodb.createBulk(Tables.budgets, data.budgets);
         }
