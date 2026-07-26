@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import {
   initializeDatabase,
@@ -47,19 +47,23 @@ function AppContent() {
 
   const userId = user?.id || '';
 
-  const refreshData = useCallback(async () => {
+  const refreshData = async () => {
     if (!userId) return;
-    const [txs, cats, bgs, cur] = await Promise.all([
-      fetchTransactions(userId),
-      fetchCategories(userId),
-      fetchBudgets(userId),
-      fetchCurrency(userId),
-    ]);
-    setAllTransactions(txs);
-    setCategories(cats);
-    setBudgets(bgs);
-    setCurrency(cur as CurrencyCode);
-  }, [userId]);
+    try {
+      const [txs, cats, bgs, cur] = await Promise.all([
+        fetchTransactions(userId),
+        fetchCategories(userId),
+        fetchBudgets(userId),
+        fetchCurrency(userId),
+      ]);
+      setAllTransactions(txs);
+      setCategories(cats);
+      setBudgets(bgs);
+      setCurrency(cur as CurrencyCode);
+    } catch (err) {
+      console.error('Failed to refresh data', err);
+    }
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -74,7 +78,7 @@ function AppContent() {
       }
     }
     setupApp();
-  }, [userId, refreshData]);
+  }, [userId]);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
