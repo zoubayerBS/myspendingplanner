@@ -103,6 +103,21 @@ function AppContent() {
   }, [userId]);
 
   useEffect(() => {
+    if (!userId || !isReady) return;
+    const interval = setInterval(() => {
+      refreshData();
+    }, 30000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshData();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [userId, isReady]);
+
+  useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
     window.addEventListener('online', handleOnline);
