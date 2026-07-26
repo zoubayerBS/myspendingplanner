@@ -7,10 +7,15 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
+let _sql: any = null;
+
 function getSql() {
-  const url = (process.env.DATABASE_URL || '').trim();
-  if (!url) throw new Error('DATABASE_URL is required');
-  return neon(url);
+  if (!_sql) {
+    const url = (process.env.DATABASE_URL || '').trim();
+    if (!url) throw new Error('DATABASE_URL is required');
+    _sql = neon(url);
+  }
+  return _sql;
 }
 
 function sql(strings: TemplateStringsArray, ...values: any[]) {
