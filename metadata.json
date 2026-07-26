@@ -1,0 +1,6 @@
+{
+  "name": "SpendingPlanner",
+  "description": "Gestionnaire de dépenses et budget personnel offline-first, sobre et élégant",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
