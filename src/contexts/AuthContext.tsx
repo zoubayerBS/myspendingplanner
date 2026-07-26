@@ -2,9 +2,10 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import {
   AuthUser,
   UserProfile,
-  signin,
   signup,
-  getUserProfile,
+  signin,
+  getMe,
+  saveUser,
   getSavedUser,
   clearAuth,
 } from '../db/auth';
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const saved = getSavedUser();
     if (saved) {
-      getUserProfile(saved.id)
+      getMe(saved.id)
         .then((p) => {
           if (p && p.isActive) {
             setUser(saved);
@@ -67,7 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const u = await signin(email, password);
       setUser(u);
-      const p = await getUserProfile(u.id);
+      saveUser(u);
+      const p = await getMe(u.id);
       setProfile(p);
       return true;
     } catch (e: any) {

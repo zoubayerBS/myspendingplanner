@@ -26,11 +26,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [date, setDate] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setErrorMsg(null);
       if (editingTransaction) {
         setType(editingTransaction.type);
         setAmount(String(editingTransaction.amount));
@@ -53,9 +55,18 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedAmount = parseFloat(amount.replace(',', '.'));
-    if (!parsedAmount || isNaN(parsedAmount) || parsedAmount <= 0) return;
-    if (!categoryId) return;
+    setErrorMsg(null);
+
+    const normalized = amount.replace(',', '.');
+    const parsedAmount = parseFloat(normalized);
+    if (!parsedAmount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      setErrorMsg('Montant invalide.');
+      return;
+    }
+    if (!categoryId) {
+      setErrorMsg('Selectionnez une categorie.');
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -68,8 +79,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         note: note.trim()
       });
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save transaction', err);
+      setErrorMsg(err?.message || 'Erreur lors de la sauvegarde.');
     } finally {
       setIsSubmitting(false);
     }
@@ -91,6 +103,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {errorMsg && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-xs">
+              {errorMsg}
+            </div>
+          )}
           {/* Type Toggle */}
           <div className="flex bg-slate-50 rounded-lg p-1">
             <button
@@ -118,12 +135,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             <label className="block text-[11px] text-slate-500 mb-1">Montant ({currency})</label>
             <input
               ref={amountInputRef}
-              type="number"
-              step="0.01"
-              min="0.01"
+              type="text"
+              inputMode="decimal"
               placeholder="0.00"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9.,]/g, '');
+                setAmount(val);
+              }}
               required
               className="w-full text-2xl font-semibold text-[#1A1C1E] bg-slate-50 border border-slate-200 rounded-lg py-3 px-3 focus:outline-none focus:border-[#1B3022] transition-colors placeholder:text-slate-300"
             />

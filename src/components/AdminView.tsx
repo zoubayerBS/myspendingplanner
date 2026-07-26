@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getAllUsers, setActive, setRole, type UserProfile } from '../db/auth';
+import { apiGetAllUsers, apiSetActive, apiSetRole, type UserProfile } from '../db/auth';
 
 interface Props {
   onBack: () => void;
@@ -11,7 +11,7 @@ export default function AdminView({ onBack }: Props) {
 
   const loadUsers = async () => {
     setLoading(true);
-    const data = await getAllUsers();
+    const data = await apiGetAllUsers();
     setUsers(data);
     setLoading(false);
   };
@@ -20,13 +20,13 @@ export default function AdminView({ onBack }: Props) {
     loadUsers();
   }, []);
 
-  const handleToggle = async (userId: string, currentActive: boolean) => {
-    await setActive(userId, !currentActive);
+  const handleToggle = async (uuid: string, currentActive: boolean) => {
+    await apiSetActive(uuid, !currentActive);
     await loadUsers();
   };
 
-  const handleRole = async (userId: string, newRole: string) => {
-    await setRole(userId, newRole);
+  const handleRole = async (uuid: string, newRole: string) => {
+    await apiSetRole(uuid, newRole);
     await loadUsers();
   };
 
@@ -53,13 +53,13 @@ export default function AdminView({ onBack }: Props) {
               </h2>
               <div className="space-y-2">
                 {pending.map((u) => (
-                  <div key={u.Id} className="border-2 border-dashed border-orange-200 rounded-lg p-3 flex items-center justify-between">
+                  <div key={u.uuid} className="border-2 border-dashed border-orange-200 rounded-lg p-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{u.name || u.email}</p>
                       <p className="text-xs text-gray-500">{u.email}</p>
                     </div>
                     <button
-                      onClick={() => handleToggle(u.userId, false)}
+                      onClick={() => handleToggle(u.uuid, false)}
                       className="text-xs bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600"
                     >
                       Activer
@@ -77,7 +77,7 @@ export default function AdminView({ onBack }: Props) {
               </h2>
               <div className="space-y-2">
                 {active.map((u) => (
-                  <div key={u.Id} className="border-2 border-dashed border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                  <div key={u.uuid} className="border-2 border-dashed border-gray-200 rounded-lg p-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">{u.name || u.email}</p>
                       <p className="text-xs text-gray-500">{u.email}</p>
@@ -88,21 +88,21 @@ export default function AdminView({ onBack }: Props) {
                     <div className="flex gap-1">
                       {u.role === 'admin' ? (
                         <button
-                          onClick={() => handleRole(u.userId, 'user')}
+                          onClick={() => handleRole(u.uuid, 'user')}
                           className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-200"
                         >
                           Retirer admin
                         </button>
                       ) : (
                         <button
-                          onClick={() => handleRole(u.userId, 'admin')}
+                          onClick={() => handleRole(u.uuid, 'admin')}
                           className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-200"
                         >
                           Promouvoir
                         </button>
                       )}
                       <button
-                        onClick={() => handleToggle(u.userId, true)}
+                        onClick={() => handleToggle(u.uuid, true)}
                         className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-lg hover:bg-red-200"
                       >
                         Desactiver

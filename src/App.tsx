@@ -144,20 +144,8 @@ function AppContent() {
   };
 
   const handleResetDatabase = async () => {
-    const { nocodb, Tables } = await import('./db/nocodb');
-    const where = `where=(userId,eq,${userId})`;
-    const [txs, cats, bgs, sts] = await Promise.all([
-      nocodb.listAll(Tables.transactions, where),
-      nocodb.listAll(Tables.categories, where),
-      nocodb.listAll(Tables.budgets, where),
-      nocodb.listAll(Tables.settings, where),
-    ]);
-    await Promise.all([
-      ...txs.map((r) => nocodb.remove(Tables.transactions, r.Id)),
-      ...cats.map((r) => nocodb.remove(Tables.categories, r.Id)),
-      ...bgs.map((r) => nocodb.remove(Tables.budgets, r.Id)),
-      ...sts.map((r) => nocodb.remove(Tables.settings, r.Id)),
-    ]);
+    const { apiResetDatabase } = await import('./db/api');
+    await apiResetDatabase(userId);
     await initializeDatabase(userId);
     await refreshData();
   };

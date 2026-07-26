@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, Trash2, Smartphone } from 'lucide-react';
 import { CurrencyCode } from '../types';
-import { nocodb, Tables } from '../db/nocodb';
+import { apiFetchTransactions, apiFetchCategories, apiFetchBudgets, apiFetchSettings, apiResetDatabase, apiBulkCategories, apiSaveSetting, apiSaveBudget, apiCreateTransaction } from '../db/api';
 
 interface SettingsViewProps {
   currency: CurrencyCode;
@@ -51,21 +51,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleExportJSON = async () => {
-    const where = `where=(userId,eq,${userId})`;
     const [transactions, categories, budgets, settings] = await Promise.all([
-      nocodb.listAll(Tables.transactions, where),
-      nocodb.listAll(Tables.categories, where),
-      nocodb.listAll(Tables.budgets, where),
-      nocodb.listAll(Tables.settings, where),
+      apiFetchTransactions(userId),
+      apiFetchCategories(userId),
+      apiFetchBudgets(userId),
+      apiFetchSettings(userId),
     ]);
 
     const backupData = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      transactions: transactions.map((r) => ({ ...r })),
-      categories: categories.map((r) => ({ ...r })),
-      budgets: budgets.map((r) => ({ ...r })),
-      settings: settings.map((r) => ({ ...r })),
+      transactions,
+      categories,
+      budgets,
+      settings,
     };
 
     const jsonStr = JSON.stringify(backupData, null, 2);
@@ -90,28 +89,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const text = await file.text();
       const data = JSON.parse(text);
 
-      if (data.transactions && Array.isArray(data.transactions)) {
-        const where = `where=(userId,eq,${userId})`;
-        const existing = await nocodb.listAll(Tables.transactions, where);
-        await Promise.all(existing.map((r) => nocodb.remove(Tables.transactions, r.Id)));
-        if (data.transactions.length > 0) {
-          await nocodb.createBulk(Tables.transactions, data.transactions);
-        }
+      await apiResetDatabase(userId);
+
+      if (data.categories && Array.isArray(data.categories) && data.categories.length > 0) {
+        await apiBulkCategories(userId, data.categories);
       }
-      if (data.categories && Array.isArray(data.categories)) {
-        const where = `where=(userId,eq,${userId})`;
-        const existing = await nocodb.listAll(Tables.categories, where);
-        await Promise.all(existing.map((r) => nocodb.remove(Tables.categories, r.Id)));
-        if (data.categories.length > 0) {
-          await nocodb.createBulk(Tables.categories, data.categories);
+      if (data.settings && typeof data.settings === 'object') {
+        for (const [key, value] of Object.entries(data.settings)) {
+          await apiSaveSetting(userId, key, value as string);
         }
       }
       if (data.budgets && Array.isArray(data.budgets)) {
-        const where = `where=(userId,eq,${userId})`;
-        const existing = await nocodb.listAll(Tables.budgets, where);
-        await Promise.all(existing.map((r) => nocodb.remove(Tables.budgets, r.Id)));
-        if (data.budgets.length > 0) {
-          await nocodb.createBulk(Tables.budgets, data.budgets);
+        for (const b of data.budgets) {
+          await apiSaveBudget(userId, b.categoryId, b.monthlyLimit);
+        }
+      }
+      if (data.transactions && Array.isArray(data.transactions)) {
+        for (const t of data.transactions) {
+          await apiCreateTransaction(userId, { type: t.type, amount: t.amount, categoryId: t.categoryId, date: t.date, note: t.note || '' });
         }
       }
 

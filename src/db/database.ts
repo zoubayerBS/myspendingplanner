@@ -1,4 +1,18 @@
-import { nocodb, Tables, type NocoRecord } from './nocodb';
+import {
+  apiFetchCategories,
+  apiFetchTransactions,
+  apiFetchBudgets,
+  apiFetchSettings,
+  apiCreateTransaction,
+  apiUpdateTransaction,
+  apiDeleteTransaction,
+  apiSaveBudget,
+  apiDeleteBudget,
+  apiAddCategory,
+  apiDeleteCategory,
+  apiSaveSetting,
+  apiBulkCategories,
+} from './api';
 import { Category, Transaction, Budget } from '../types';
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -17,135 +31,68 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat_gift', name: 'Cadeaux & Allocations', icon: 'Gift', type: 'income', isDefault: true },
 ];
 
-function mapCategory(r: NocoRecord): Category {
-  return { id: r.id || String(r.Id), name: r.name, icon: r.icon, type: r.type, isDefault: r.isDefault };
-}
-
-function mapTransaction(r: NocoRecord): Transaction {
-  return { id: Number(r.Id), type: r.type, amount: Number(r.amount), categoryId: r.categoryId, date: r.date, note: r.note || '', createdAt: Number(r.createdAt) };
-}
-
-function mapBudget(r: NocoRecord): Budget {
-  return { id: r.categoryId || String(r.Id), categoryId: r.categoryId, monthlyLimit: Number(r.monthlyLimit) };
-}
-
 export async function fetchCategories(userId: string): Promise<Category[]> {
-  const records = await nocodb.listAll(Tables.categories, `where=(userId,eq,${userId})`);
-  return records.map(mapCategory);
+  return apiFetchCategories(userId);
 }
 
 export async function fetchTransactions(userId: string): Promise<Transaction[]> {
-  const records = await nocodb.listAll(Tables.transactions, `where=(userId,eq,${userId})`);
-  return records.map(mapTransaction).sort((a, b) => b.createdAt - a.createdAt);
+  return apiFetchTransactions(userId);
 }
 
 export async function fetchBudgets(userId: string): Promise<Budget[]> {
-  const records = await nocodb.listAll(Tables.budgets, `where=(userId,eq,${userId})`);
-  return records.map(mapBudget);
+  return apiFetchBudgets(userId);
 }
 
 export async function fetchCurrency(userId: string): Promise<string> {
-  const records = await nocodb.list(Tables.settings, `where=(userId,eq,${userId})`);
-  const found = records.find((r) => r.key === 'currency');
-  return found ? String(found.value) : 'DT';
+  const settings = await apiFetchSettings(userId);
+  return settings.currency || 'DT';
 }
 
 export async function saveTransaction(
   txData: Omit<Transaction, 'id' | 'createdAt'> & { id?: number },
   userId: string
 ): Promise<void> {
+  const payload = { type: txData.type, amount: txData.amount, categoryId: txData.categoryId, date: txData.date, note: txData.note || '' };
   if (txData.id) {
-    const records = await nocodb.listAll(Tables.transactions, `where=(userId,eq,${userId})`);
-    const existing = records.find((r) => Number(r.Id) === txData.id);
-    if (existing) {
-      await nocodb.update(Tables.transactions, existing.Id, {
-        type: txData.type,
-        amount: txData.amount,
-        categoryId: txData.categoryId,
-        date: txData.date,
-        note: txData.note,
-        createdAt: existing.createdAt,
-      });
-    }
+    await apiUpdateTransaction(userId, txData.id, payload);
   } else {
-    await nocodb.create(Tables.transactions, {
-      type: txData.type,
-      amount: txData.amount,
-      categoryId: txData.categoryId,
-      date: txData.date,
-      note: txData.note,
-      createdAt: Date.now(),
-      userId,
-    });
+    await apiCreateTransaction(userId, payload);
   }
 }
 
 export async function deleteTransaction(id: number, userId: string): Promise<void> {
-  const records = await nocodb.listAll(Tables.transactions, `where=(userId,eq,${userId})`);
-  const existing = records.find((r) => Number(r.Id) === id);
-  if (existing) {
-    await nocodb.remove(Tables.transactions, existing.Id);
-  }
+  await apiDeleteTransaction(userId, id);
 }
 
 export async function saveBudget(categoryId: string, monthlyLimit: number, userId: string): Promise<void> {
-  const records = await nocodb.listAll(Tables.budgets, `where=(userId,eq,${userId})`);
-  const existing = records.find((r) => r.categoryId === categoryId);
-  if (existing) {
-    await nocodb.update(Tables.budgets, existing.Id, { categoryId, monthlyLimit });
-  } else {
-    await nocodb.create(Tables.budgets, { categoryId, monthlyLimit, userId });
-  }
+  await apiSaveBudget(userId, categoryId, monthlyLimit);
 }
 
 export async function deleteBudget(categoryId: string, userId: string): Promise<void> {
-  const records = await nocodb.listAll(Tables.budgets, `where=(userId,eq,${userId})`);
-  const existing = records.find((r) => r.categoryId === categoryId);
-  if (existing) {
-    await nocodb.remove(Tables.budgets, existing.Id);
-  }
+  await apiDeleteBudget(userId, categoryId);
 }
 
 export async function addCategory(cat: Omit<Category, 'id'>, userId: string): Promise<void> {
-  await nocodb.create(Tables.categories, {
-    id: `cat_custom_${Date.now()}`,
-    name: cat.name,
-    icon: cat.icon,
-    type: cat.type,
-    isDefault: false,
-    userId,
-  });
+  await apiAddCategory(userId, { id: `cat_custom_${Date.now()}`, name: cat.name, icon: cat.icon, type: cat.type, isDefault: false });
 }
 
 export async function deleteCategory(id: string, userId: string): Promise<void> {
-  const records = await nocodb.listAll(Tables.categories, `where=(userId,eq,${userId})`);
-  const existing = records.find((r) => r.id === id);
-  if (existing) {
-    await nocodb.remove(Tables.categories, existing.Id);
-  }
+  await apiDeleteCategory(userId, id);
 }
 
 export async function updateCurrency(newCurrency: string, userId: string): Promise<void> {
-  const records = await nocodb.list(Tables.settings, `where=(userId,eq,${userId})`);
-  const existing = records.find((r) => r.key === 'currency');
-  if (existing) {
-    await nocodb.update(Tables.settings, existing.Id, { key: 'currency', value: newCurrency });
-  } else {
-    await nocodb.create(Tables.settings, { key: 'currency', value: newCurrency, userId });
-  }
+  await apiSaveSetting(userId, 'currency', newCurrency);
 }
 
 export async function initializeDatabase(userId: string): Promise<void> {
-  const catRecords = await nocodb.listAll(Tables.categories, `where=(userId,eq,${userId})`);
-  if (catRecords.length === 0) {
-    await nocodb.createBulk(Tables.categories, DEFAULT_CATEGORIES.map((c) => ({
-      id: c.id, name: c.name, icon: c.icon, type: c.type, isDefault: c.isDefault, userId,
+  const cats = await fetchCategories(userId);
+  if (cats.length === 0) {
+    await apiBulkCategories(userId, DEFAULT_CATEGORIES.map((c) => ({
+      id: c.id, name: c.name, icon: c.icon, type: c.type, isDefault: c.isDefault,
     })));
   }
-
-  const settingsRecords = await nocodb.list(Tables.settings, `where=(userId,eq,${userId})`);
-  const hasCurrency = settingsRecords.find((r) => r.key === 'currency');
-  if (!hasCurrency) {
-    await nocodb.create(Tables.settings, { key: 'currency', value: 'DT', userId });
+  const settings = await apiFetchSettings(userId);
+  if (!settings.currency) {
+    await apiSaveSetting(userId, 'currency', 'DT');
   }
 }
