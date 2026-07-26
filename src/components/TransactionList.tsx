@@ -111,7 +111,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-0.5">
             {(['all', 'expense', 'income'] as const).map((type) => (
               <button
@@ -129,7 +129,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#1B3022]"
+            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#1B3022] min-w-0"
           >
             <option value="all">Toutes</option>
             {categories.map((c) => (
