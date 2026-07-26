@@ -27,7 +27,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab,
     <>
       {/* Mobile Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white border-t border-slate-100">
-        <div className="flex items-center justify-around px-2 py-2">
+        <div className="flex items-center overflow-x-auto px-2 py-2 gap-1 scrollbar-none">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -35,22 +35,22 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab,
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors ${
+                className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors shrink-0 ${
                   isActive ? 'text-[#1B3022]' : 'text-slate-400'
                 }`}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{item.label}</span>
+                <span className="text-[10px] font-medium whitespace-nowrap">{item.label}</span>
               </button>
             );
           })}
           {isAdmin && (
             <button
               onClick={onAdmin}
-              className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors text-blue-500"
+              className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors text-blue-500 shrink-0"
             >
               <Shield className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Admin</span>
+              <span className="text-[10px] font-medium whitespace-nowrap">Admin</span>
             </button>
           )}
         </div>
