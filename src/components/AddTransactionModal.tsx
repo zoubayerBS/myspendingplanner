@@ -170,28 +170,28 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             </div>
           </div>
 
-          {/* Date & Note */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] text-slate-500 mb-1">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:outline-none focus:border-[#1B3022] transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-500 mb-1">Note</label>
-              <input
-                type="text"
-                placeholder="Optionnel"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:outline-none focus:border-[#1B3022] transition-colors placeholder:text-slate-400"
-              />
-            </div>
+          {/* Date */}
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+              className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:outline-none focus:border-[#1B3022] transition-colors"
+            />
+          </div>
+
+          {/* Note */}
+          <div>
+            <label className="block text-[11px] text-slate-500 mb-1">Note</label>
+            <input
+              type="text"
+              placeholder="Optionnel"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:outline-none focus:border-[#1B3022] transition-colors placeholder:text-slate-400"
+            />
           </div>
 
           {/* Actions */}
