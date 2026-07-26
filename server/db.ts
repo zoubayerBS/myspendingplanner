@@ -1,13 +1,24 @@
 import 'dotenv/config';
 import { neon } from '@neondatabase/serverless';
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
+let _neonSql: any = null;
 
-export const sql = neon(DATABASE_URL);
+function getSql() {
+  if (!_neonSql) {
+    const url = (process.env.DATABASE_URL || '').trim();
+    if (!url) throw new Error('DATABASE_URL is required');
+    _neonSql = neon(url);
+  }
+  return _neonSql;
+}
+
+export function sql(strings: TemplateStringsArray, ...values: any[]) {
+  return getSql()(strings, ...values);
+}
 
 export async function initDB() {
-  await sql`
+  const db = getSql();
+  await db`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       uuid TEXT UNIQUE NOT NULL,
@@ -20,7 +31,7 @@ export async function initDB() {
     )
   `;
 
-  await sql`
+  await db`
     CREATE TABLE IF NOT EXISTS categories (
       id SERIAL PRIMARY KEY,
       cat_id TEXT NOT NULL,
@@ -32,7 +43,7 @@ export async function initDB() {
     )
   `;
 
-  await sql`
+  await db`
     CREATE TABLE IF NOT EXISTS transactions (
       id SERIAL PRIMARY KEY,
       type TEXT NOT NULL,
@@ -45,7 +56,7 @@ export async function initDB() {
     )
   `;
 
-  await sql`
+  await db`
     CREATE TABLE IF NOT EXISTS budgets (
       id SERIAL PRIMARY KEY,
       "categoryId" TEXT NOT NULL,
@@ -54,7 +65,7 @@ export async function initDB() {
     )
   `;
 
-  await sql`
+  await db`
     CREATE TABLE IF NOT EXISTS settings (
       id SERIAL PRIMARY KEY,
       key TEXT NOT NULL,
