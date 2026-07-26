@@ -47,22 +47,44 @@ function AppContent() {
 
   const userId = user?.id || '';
 
-  const refreshData = async () => {
+  const refreshTransactions = async () => {
     if (!userId) return;
     try {
-      const [txs, cats, bgs, cur] = await Promise.all([
-        fetchTransactions(userId),
-        fetchCategories(userId),
-        fetchBudgets(userId),
-        fetchCurrency(userId),
-      ]);
+      const txs = await fetchTransactions(userId);
       setAllTransactions(txs);
-      setCategories(cats);
-      setBudgets(bgs);
-      setCurrency(cur as CurrencyCode);
     } catch (err) {
-      console.error('Failed to refresh data', err);
+      console.error('Failed to refresh transactions', err);
     }
+  };
+
+  const refreshCategories = async () => {
+    if (!userId) return;
+    try {
+      const cats = await fetchCategories(userId);
+      setCategories(cats);
+    } catch (err) {
+      console.error('Failed to refresh categories', err);
+    }
+  };
+
+  const refreshBudgets = async () => {
+    if (!userId) return;
+    try {
+      const bgs = await fetchBudgets(userId);
+      setBudgets(bgs);
+    } catch (err) {
+      console.error('Failed to refresh budgets', err);
+    }
+  };
+
+  const refreshData = async () => {
+    if (!userId) return;
+    await Promise.all([
+      refreshTransactions(),
+      refreshCategories(),
+      refreshBudgets(),
+      fetchCurrency(userId).then((cur) => setCurrency(cur as CurrencyCode)).catch(() => {}),
+    ]);
   };
 
   useEffect(() => {
@@ -114,32 +136,32 @@ function AppContent() {
     txData: Omit<Transaction, 'id' | 'createdAt'> & { id?: number }
   ) => {
     await apiSaveTransaction(txData, userId);
-    await refreshData();
+    await refreshTransactions();
   };
 
   const handleDeleteTransaction = async (id: number) => {
     await apiDeleteTransaction(id, userId);
-    await refreshData();
+    await refreshTransactions();
   };
 
   const handleSaveBudget = async (categoryId: string, monthlyLimit: number) => {
     await apiSaveBudget(categoryId, monthlyLimit, userId);
-    await refreshData();
+    await refreshBudgets();
   };
 
   const handleDeleteBudget = async (id: string) => {
     await apiDeleteBudget(id, userId);
-    await refreshData();
+    await refreshBudgets();
   };
 
   const handleAddCategory = async (catData: Omit<Category, 'id'>) => {
     await apiAddCategory(catData, userId);
-    await refreshData();
+    await refreshCategories();
   };
 
   const handleDeleteCategory = async (id: string) => {
     await apiDeleteCategory(id, userId);
-    await refreshData();
+    await refreshCategories();
   };
 
   const handleUpdateCurrency = async (newCurrency: CurrencyCode) => {

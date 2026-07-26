@@ -91,35 +91,40 @@ export async function apiSetRole(uuid: string, role: string): Promise<void> {
 // ── Categories ────────────────────────────────────────
 export async function apiFetchCategories(userId: string) {
   const res = await fetch(`${API_URL}/api/categories`, { headers: getHeaders(userId) });
+  if (!res.ok) throw new Error(`Categories fetch failed: ${res.status}`);
   return res.json();
 }
 
 export async function apiAddCategory(userId: string, cat: { id: string; name: string; icon: string; type: string; isDefault?: boolean }) {
-  await fetch(`${API_URL}/api/categories`, {
+  const res = await fetch(`${API_URL}/api/categories`, {
     method: 'POST',
     headers: getHeaders(userId),
     body: JSON.stringify(cat),
   });
+  if (!res.ok) throw new Error(`Add category failed: ${res.status}`);
 }
 
 export async function apiBulkCategories(userId: string, categories: any[]) {
-  await fetch(`${API_URL}/api/categories/bulk`, {
+  const res = await fetch(`${API_URL}/api/categories/bulk`, {
     method: 'POST',
     headers: getHeaders(userId),
     body: JSON.stringify({ categories }),
   });
+  if (!res.ok) throw new Error(`Bulk categories failed: ${res.status}`);
 }
 
 export async function apiDeleteCategory(userId: string, catId: string) {
-  await fetch(`${API_URL}/api/categories/${catId}`, {
+  const res = await fetch(`${API_URL}/api/categories/${catId}`, {
     method: 'DELETE',
     headers: getHeaders(userId),
   });
+  if (!res.ok) throw new Error(`Delete category failed: ${res.status}`);
 }
 
 // ── Transactions ──────────────────────────────────────
 export async function apiFetchTransactions(userId: string) {
   const res = await fetch(`${API_URL}/api/transactions`, { headers: getHeaders(userId) });
+  if (!res.ok) throw new Error(`Transactions fetch failed: ${res.status}`);
   return res.json();
 }
 
@@ -129,63 +134,72 @@ export async function apiCreateTransaction(userId: string, tx: { type: string; a
     headers: getHeaders(userId),
     body: JSON.stringify(tx),
   });
+  if (!res.ok) throw new Error(`Create transaction failed: ${res.status}`);
   return res.json();
 }
 
 export async function apiUpdateTransaction(userId: string, id: number, tx: { type: string; amount: number; categoryId: string; date: string; note: string }) {
-  await fetch(`${API_URL}/api/transactions/${id}`, {
+  const res = await fetch(`${API_URL}/api/transactions/${id}`, {
     method: 'PATCH',
     headers: getHeaders(userId),
     body: JSON.stringify(tx),
   });
+  if (!res.ok) throw new Error(`Update transaction failed: ${res.status}`);
 }
 
 export async function apiDeleteTransaction(userId: string, id: number) {
-  await fetch(`${API_URL}/api/transactions/${id}`, {
+  const res = await fetch(`${API_URL}/api/transactions/${id}`, {
     method: 'DELETE',
     headers: getHeaders(userId),
   });
+  if (!res.ok) throw new Error(`Delete transaction failed: ${res.status}`);
 }
 
 // ── Budgets ───────────────────────────────────────────
 export async function apiFetchBudgets(userId: string) {
   const res = await fetch(`${API_URL}/api/budgets`, { headers: getHeaders(userId) });
+  if (!res.ok) throw new Error(`Budgets fetch failed: ${res.status}`);
   return res.json();
 }
 
 export async function apiSaveBudget(userId: string, categoryId: string, monthlyLimit: number) {
-  await fetch(`${API_URL}/api/budgets`, {
+  const res = await fetch(`${API_URL}/api/budgets`, {
     method: 'POST',
     headers: getHeaders(userId),
     body: JSON.stringify({ categoryId, monthlyLimit }),
   });
+  if (!res.ok) throw new Error(`Save budget failed: ${res.status}`);
 }
 
 export async function apiDeleteBudget(userId: string, categoryId: string) {
-  await fetch(`${API_URL}/api/budgets/${categoryId}`, {
+  const res = await fetch(`${API_URL}/api/budgets/${categoryId}`, {
     method: 'DELETE',
     headers: getHeaders(userId),
   });
+  if (!res.ok) throw new Error(`Delete budget failed: ${res.status}`);
 }
 
 // ── Settings ──────────────────────────────────────────
 export async function apiFetchSettings(userId: string): Promise<Record<string, string>> {
   const res = await fetch(`${API_URL}/api/settings`, { headers: getHeaders(userId) });
+  if (!res.ok) throw new Error(`Settings fetch failed: ${res.status}`);
   return res.json();
 }
 
 export async function apiSaveSetting(userId: string, key: string, value: string) {
-  await fetch(`${API_URL}/api/settings`, {
+  const res = await fetch(`${API_URL}/api/settings`, {
     method: 'POST',
     headers: getHeaders(userId),
     body: JSON.stringify({ key, value }),
   });
+  if (!res.ok) throw new Error(`Save setting failed: ${res.status}`);
 }
 
 // ── Reset ─────────────────────────────────────────────
 export async function apiResetDatabase(userId: string) {
-  await fetch(`${API_URL}/api/reset`, {
+  const res = await fetch(`${API_URL}/api/reset`, {
     method: 'DELETE',
     headers: getHeaders(userId),
   });
+  if (!res.ok) throw new Error(`Reset database failed: ${res.status}`);
 }
