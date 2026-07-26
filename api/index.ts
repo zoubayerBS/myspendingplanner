@@ -372,6 +372,47 @@ app.delete('/api/reset', async (req, res) => {
   }
 });
 
+// ── SSE Real-time Events ──────────────────────────────
+app.get('/api/events', async (req, res) => {
+  const userId = (req.query.userId as string) || (req.headers['x-user-id'] as string);
+  if (!userId) return res.status(401).json({ error: 'Non autorise' });
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  res.write(':ok\n\n');
+
+  let lastHash = '';
+  let closed = false;
+
+  const check = async () => {
+    if (closed) return;
+    try {
+      const txs = await sql`SELECT id, type, amount, "categoryId", date, note, "createdAt" FROM transactions WHERE "userId" = ${userId} ORDER BY "createdAt" DESC`;
+      const hash = JSON.stringify(txs);
+      if (hash !== lastHash) {
+        lastHash = hash;
+        res.write(`data: ${hash}\n\n`);
+      }
+    } catch (e) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: 'poll failed' })}\n\n`);
+    }
+  };
+
+  await check();
+
+  const interval = setInterval(check, 5000);
+
+  req.on('close', () => {
+    closed = true;
+    clearInterval(interval);
+  });
+});
+
 let dbReady = false;
 
 export default async function handler(req: any, res: any) {

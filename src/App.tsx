@@ -104,16 +104,21 @@ function AppContent() {
 
   useEffect(() => {
     if (!userId || !isReady) return;
-    const interval = setInterval(() => {
+
+    const eventSource = new EventSource(
+      `${import.meta.env.VITE_API_URL || ''}/api/events?userId=${userId}`,
+    );
+
+    eventSource.onmessage = () => {
       refreshData();
-    }, 30000);
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refreshData();
     };
-    document.addEventListener('visibilitychange', handleVisibility);
+
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
     return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      eventSource.close();
     };
   }, [userId, isReady]);
 

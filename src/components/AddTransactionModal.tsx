@@ -30,8 +30,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
+  const [isOpenOnce, setIsOpenOnce] = useState(false);
+
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !isOpenOnce) {
       setErrorMsg(null);
       if (editingTransaction) {
         setType(editingTransaction.type);
@@ -47,9 +49,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         const defaultCategory = categories.find((c) => c.type === 'expense' || c.type === 'both');
         if (defaultCategory) setCategoryId(defaultCategory.id);
       }
+      setIsOpenOnce(true);
       setTimeout(() => amountInputRef.current?.focus(), 100);
     }
-  }, [isOpen, editingTransaction, categories]);
+    if (!isOpen) {
+      setIsOpenOnce(false);
+    }
+  }, [isOpen, editingTransaction]);
 
   const filteredCategories = categories.filter((c) => c.type === type || c.type === 'both');
 
