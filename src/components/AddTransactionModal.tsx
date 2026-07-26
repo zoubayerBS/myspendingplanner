@@ -178,7 +178,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required
-              className="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:outline-none focus:border-[#1B3022] transition-colors"
+              className="w-full min-w-0 text-sm bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 focus:outline-none focus:border-[#1B3022] transition-colors box-border"
             />
           </div>
 
