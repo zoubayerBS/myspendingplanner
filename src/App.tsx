@@ -106,8 +106,11 @@ function AppContent() {
   useEffect(() => {
     if (!userId || !isReady) return;
 
+    const token = user?.token;
+    if (!token) return;
+
     const eventSource = new EventSource(
-      `${import.meta.env.VITE_API_URL || ''}/api/events?userId=${userId}`,
+      `${import.meta.env.VITE_API_URL || ''}/api/events?token=${encodeURIComponent(token)}`,
     );
 
     eventSource.onmessage = () => {

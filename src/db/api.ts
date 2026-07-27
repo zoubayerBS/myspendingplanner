@@ -4,6 +4,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  token: string;
 }
 
 export interface UserProfile {
@@ -16,10 +17,15 @@ export interface UserProfile {
 
 const USER_KEY = 'sp_auth_user';
 
-function getHeaders(userId?: string): Record<string, string> {
+function getHeaders(token?: string): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (userId) h['x-user-id'] = userId;
+  if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
+}
+
+export function getToken(): string | null {
+  const user = getSavedUser();
+  return user?.token || null;
 }
 
 export function saveUser(user: AuthUser) {
@@ -45,7 +51,7 @@ export async function apiSignup(email: string, password: string, name: string): 
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Erreur inscription');
-  return { id: data.uuid, email: data.email, name: data.name };
+  return { id: data.uuid, email: data.email, name: data.name, token: data.token };
 }
 
 export async function apiSignin(email: string, password: string): Promise<AuthUser> {
@@ -56,11 +62,13 @@ export async function apiSignin(email: string, password: string): Promise<AuthUs
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Erreur connexion');
-  return { id: data.uuid, email: data.email, name: data.name };
+  return { id: data.uuid, email: data.email, name: data.name, token: data.token };
 }
 
-export async function apiGetMe(userId: string): Promise<UserProfile> {
-  const res = await fetch(`${API_URL}/api/auth/me`, { headers: getHeaders(userId) });
+export async function apiGetMe(_userId: string): Promise<UserProfile> {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
+  const res = await fetch(`${API_URL}/api/auth/me`, { headers: getHeaders(token) });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
@@ -68,138 +76,169 @@ export async function apiGetMe(userId: string): Promise<UserProfile> {
 
 // ── Users (admin) ─────────────────────────────────────
 export async function apiGetAllUsers(): Promise<UserProfile[]> {
-  const res = await fetch(`${API_URL}/api/users`);
+  const token = getToken();
+  const res = await fetch(`${API_URL}/api/users`, { headers: getHeaders(token || undefined) });
   return res.json();
 }
 
 export async function apiSetActive(uuid: string, isActive: boolean): Promise<void> {
+  const token = getToken();
   await fetch(`${API_URL}/api/users/${uuid}/activate`, {
     method: 'PATCH',
-    headers: getHeaders(),
+    headers: getHeaders(token || undefined),
     body: JSON.stringify({ isActive }),
   });
 }
 
 export async function apiSetRole(uuid: string, role: string): Promise<void> {
+  const token = getToken();
   await fetch(`${API_URL}/api/users/${uuid}/role`, {
     method: 'PATCH',
-    headers: getHeaders(),
+    headers: getHeaders(token || undefined),
     body: JSON.stringify({ role }),
   });
 }
 
 // ── Categories ────────────────────────────────────────
-export async function apiFetchCategories(userId: string) {
-  const res = await fetch(`${API_URL}/api/categories`, { headers: getHeaders(userId) });
+export async function apiFetchCategories(_userId: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
+  const res = await fetch(`${API_URL}/api/categories`, { headers: getHeaders(token) });
   if (!res.ok) throw new Error(`Categories fetch failed: ${res.status}`);
   return res.json();
 }
 
-export async function apiAddCategory(userId: string, cat: { id: string; name: string; icon: string; type: string; isDefault?: boolean }) {
+export async function apiAddCategory(_userId: string, cat: { id: string; name: string; icon: string; type: string; isDefault?: boolean }) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/categories`, {
     method: 'POST',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
     body: JSON.stringify(cat),
   });
   if (!res.ok) throw new Error(`Add category failed: ${res.status}`);
 }
 
-export async function apiBulkCategories(userId: string, categories: any[]) {
+export async function apiBulkCategories(_userId: string, categories: any[]) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/categories/bulk`, {
     method: 'POST',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
     body: JSON.stringify({ categories }),
   });
   if (!res.ok) throw new Error(`Bulk categories failed: ${res.status}`);
 }
 
-export async function apiDeleteCategory(userId: string, catId: string) {
+export async function apiDeleteCategory(_userId: string, catId: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/categories/${catId}`, {
     method: 'DELETE',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
   });
   if (!res.ok) throw new Error(`Delete category failed: ${res.status}`);
 }
 
 // ── Transactions ──────────────────────────────────────
-export async function apiFetchTransactions(userId: string) {
-  const res = await fetch(`${API_URL}/api/transactions`, { headers: getHeaders(userId) });
+export async function apiFetchTransactions(_userId: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
+  const res = await fetch(`${API_URL}/api/transactions`, { headers: getHeaders(token) });
   if (!res.ok) throw new Error(`Transactions fetch failed: ${res.status}`);
   return res.json();
 }
 
-export async function apiCreateTransaction(userId: string, tx: { type: string; amount: number; categoryId: string; date: string; note: string }) {
+export async function apiCreateTransaction(_userId: string, tx: { type: string; amount: number; categoryId: string; date: string; note: string }) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/transactions`, {
     method: 'POST',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
     body: JSON.stringify(tx),
   });
   if (!res.ok) throw new Error(`Create transaction failed: ${res.status}`);
   return res.json();
 }
 
-export async function apiUpdateTransaction(userId: string, id: number, tx: { type: string; amount: number; categoryId: string; date: string; note: string }) {
+export async function apiUpdateTransaction(_userId: string, id: number, tx: { type: string; amount: number; categoryId: string; date: string; note: string }) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/transactions/${id}`, {
     method: 'PATCH',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
     body: JSON.stringify(tx),
   });
   if (!res.ok) throw new Error(`Update transaction failed: ${res.status}`);
 }
 
-export async function apiDeleteTransaction(userId: string, id: number) {
+export async function apiDeleteTransaction(_userId: string, id: number) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/transactions/${id}`, {
     method: 'DELETE',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
   });
   if (!res.ok) throw new Error(`Delete transaction failed: ${res.status}`);
 }
 
 // ── Budgets ───────────────────────────────────────────
-export async function apiFetchBudgets(userId: string) {
-  const res = await fetch(`${API_URL}/api/budgets`, { headers: getHeaders(userId) });
+export async function apiFetchBudgets(_userId: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
+  const res = await fetch(`${API_URL}/api/budgets`, { headers: getHeaders(token) });
   if (!res.ok) throw new Error(`Budgets fetch failed: ${res.status}`);
   return res.json();
 }
 
-export async function apiSaveBudget(userId: string, categoryId: string, monthlyLimit: number) {
+export async function apiSaveBudget(_userId: string, categoryId: string, monthlyLimit: number) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/budgets`, {
     method: 'POST',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
     body: JSON.stringify({ categoryId, monthlyLimit }),
   });
   if (!res.ok) throw new Error(`Save budget failed: ${res.status}`);
 }
 
-export async function apiDeleteBudget(userId: string, categoryId: string) {
+export async function apiDeleteBudget(_userId: string, categoryId: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/budgets/${categoryId}`, {
     method: 'DELETE',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
   });
   if (!res.ok) throw new Error(`Delete budget failed: ${res.status}`);
 }
 
 // ── Settings ──────────────────────────────────────────
-export async function apiFetchSettings(userId: string): Promise<Record<string, string>> {
-  const res = await fetch(`${API_URL}/api/settings`, { headers: getHeaders(userId) });
+export async function apiFetchSettings(_userId: string): Promise<Record<string, string>> {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
+  const res = await fetch(`${API_URL}/api/settings`, { headers: getHeaders(token) });
   if (!res.ok) throw new Error(`Settings fetch failed: ${res.status}`);
   return res.json();
 }
 
-export async function apiSaveSetting(userId: string, key: string, value: string) {
+export async function apiSaveSetting(_userId: string, key: string, value: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/settings`, {
     method: 'POST',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
     body: JSON.stringify({ key, value }),
   });
   if (!res.ok) throw new Error(`Save setting failed: ${res.status}`);
 }
 
 // ── Reset ─────────────────────────────────────────────
-export async function apiResetDatabase(userId: string) {
+export async function apiResetDatabase(_userId: string) {
+  const token = getToken();
+  if (!token) throw new Error('Non autorise');
   const res = await fetch(`${API_URL}/api/reset`, {
     method: 'DELETE',
-    headers: getHeaders(userId),
+    headers: getHeaders(token),
   });
   if (!res.ok) throw new Error(`Reset database failed: ${res.status}`);
 }

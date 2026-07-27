@@ -1,11 +1,35 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import { sql, initDB } from './db';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+
+function generateToken(user: { uuid: string; email: string; role: string }) {
+  return jwt.sign({ uuid: user.uuid, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function verifyToken(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Non autorise' });
+  try {
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET) as { uuid: string; email: string; role: string };
+    req.user = decoded;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Token invalide' });
+  }
+}
+
+function requireAdmin(req: any, res: any, next: any) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Acces interdit' });
+  next();
+}
 
 async function sha256(message: string): Promise<string> {
   const { createHash } = await import('crypto');
@@ -35,6 +59,7 @@ async function seedUserData(userId: string) {
   await sql`INSERT INTO settings (key, value, "userId") VALUES ('currency', 'DT', ${userId})`;
 }
 
+// ── Auth (public) ────────────────────────────────────
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -58,8 +83,9 @@ app.post('/api/auth/signup', async (req, res) => {
     `;
 
     await seedUserData(uuid);
-
-    res.json(result[0]);
+    const user = result[0];
+    const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
+    res.json({ ...user, token });
   } catch (err: any) {
     console.error('Signup error:', err);
     res.status(500).json({ error: err.message });
@@ -79,19 +105,18 @@ app.post('/api/auth/signin', async (req, res) => {
     if (user.passwordHash !== passwordHash) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
     if (!user.isActive) return res.status(403).json({ error: 'Votre compte est en attente d activation par l administrateur.' });
 
-    res.json({ uuid: user.uuid, email: user.email, name: user.name, role: user.role });
+    const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
+    res.json({ uuid: user.uuid, email: user.email, name: user.name, role: user.role, token });
   } catch (err: any) {
     console.error('Signin error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/auth/me', async (req, res) => {
+// ── Auth (protected) ─────────────────────────────────
+app.get('/api/auth/me', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-    if (!userId) return res.status(401).json({ error: 'Non autorise' });
-
-    const result = await sql`SELECT uuid, email, name, role, "isActive" FROM users WHERE uuid = ${userId}`;
+    const result = await sql`SELECT uuid, email, name, role, "isActive" FROM users WHERE uuid = ${req.user.uuid}`;
     if (result.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json(result[0]);
   } catch (err: any) {
@@ -100,7 +125,7 @@ app.get('/api/auth/me', async (req, res) => {
 });
 
 // ── Users (admin) ─────────────────────────────────────
-app.get('/api/users', async (_req, res) => {
+app.get('/api/users', verifyToken, requireAdmin, async (_req, res) => {
   try {
     const result = await sql`SELECT id, uuid, email, name, "isActive", role FROM users ORDER BY id`;
     res.json(result);
@@ -109,7 +134,7 @@ app.get('/api/users', async (_req, res) => {
   }
 });
 
-app.patch('/api/users/:uuid/activate', async (req, res) => {
+app.patch('/api/users/:uuid/activate', verifyToken, requireAdmin, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { isActive } = req.body;
@@ -120,7 +145,7 @@ app.patch('/api/users/:uuid/activate', async (req, res) => {
   }
 });
 
-app.patch('/api/users/:uuid/role', async (req, res) => {
+app.patch('/api/users/:uuid/role', verifyToken, requireAdmin, async (req, res) => {
   try {
     const { uuid } = req.params;
     const { role } = req.body;
@@ -132,33 +157,30 @@ app.patch('/api/users/:uuid/role', async (req, res) => {
 });
 
 // ── Categories ────────────────────────────────────────
-app.get('/api/categories', async (req, res) => {
+app.get('/api/categories', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-    const result = await sql`SELECT * FROM categories WHERE "userId" = ${userId}`;
+    const result = await sql`SELECT * FROM categories WHERE "userId" = ${req.user.uuid}`;
     res.json(result.map((r) => ({ id: r.cat_id, name: r.name, icon: r.icon, type: r.type, isDefault: r.isDefault })));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/categories', async (req, res) => {
+app.post('/api/categories', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { id, name, icon, type, isDefault } = req.body;
-    await sql`INSERT INTO categories (cat_id, name, icon, type, "isDefault", "userId") VALUES (${id}, ${name}, ${icon}, ${type}, ${isDefault || false}, ${userId})`;
+    await sql`INSERT INTO categories (cat_id, name, icon, type, "isDefault", "userId") VALUES (${id}, ${name}, ${icon}, ${type}, ${isDefault || false}, ${req.user.uuid})`;
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/categories/bulk', async (req, res) => {
+app.post('/api/categories/bulk', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { categories } = req.body;
     for (const c of categories) {
-      await sql`INSERT INTO categories (cat_id, name, icon, type, "isDefault", "userId") VALUES (${c.id}, ${c.name}, ${c.icon}, ${c.type}, ${c.isDefault || false}, ${userId})`;
+      await sql`INSERT INTO categories (cat_id, name, icon, type, "isDefault", "userId") VALUES (${c.id}, ${c.name}, ${c.icon}, ${c.type}, ${c.isDefault || false}, ${req.user.uuid})`;
     }
     res.json({ ok: true });
   } catch (err: any) {
@@ -166,11 +188,10 @@ app.post('/api/categories/bulk', async (req, res) => {
   }
 });
 
-app.delete('/api/categories/:catId', async (req, res) => {
+app.delete('/api/categories/:catId', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { catId } = req.params;
-    await sql`DELETE FROM categories WHERE cat_id = ${catId} AND "userId" = ${userId}`;
+    await sql`DELETE FROM categories WHERE cat_id = ${catId} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -178,44 +199,40 @@ app.delete('/api/categories/:catId', async (req, res) => {
 });
 
 // ── Transactions ──────────────────────────────────────
-app.get('/api/transactions', async (req, res) => {
+app.get('/api/transactions', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-    const result = await sql`SELECT * FROM transactions WHERE "userId" = ${userId} ORDER BY "createdAt" DESC`;
+    const result = await sql`SELECT * FROM transactions WHERE "userId" = ${req.user.uuid} ORDER BY "createdAt" DESC`;
     res.json(result.map((r) => ({ id: r.id, type: r.type, amount: Number(r.amount), categoryId: r.categoryId, date: r.date, note: r.note, createdAt: Number(r.createdAt) })));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/transactions', async (req, res) => {
+app.post('/api/transactions', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { type, amount, categoryId, date, note } = req.body;
-    const result = await sql`INSERT INTO transactions (type, amount, "categoryId", date, note, "createdAt", "userId") VALUES (${type}, ${amount}, ${categoryId}, ${date}, ${note || ''}, ${Date.now()}, ${userId}) RETURNING id`;
+    const result = await sql`INSERT INTO transactions (type, amount, "categoryId", date, note, "createdAt", "userId") VALUES (${type}, ${amount}, ${categoryId}, ${date}, ${note || ''}, ${Date.now()}, ${req.user.uuid}) RETURNING id`;
     res.json({ id: result[0].id });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.patch('/api/transactions/:id', async (req, res) => {
+app.patch('/api/transactions/:id', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
     const { type, amount, categoryId, date, note } = req.body;
-    await sql`UPDATE transactions SET type = ${type}, amount = ${amount}, "categoryId" = ${categoryId}, date = ${date}, note = ${note || ''} WHERE id = ${Number(id)} AND "userId" = ${userId}`;
+    await sql`UPDATE transactions SET type = ${type}, amount = ${amount}, "categoryId" = ${categoryId}, date = ${date}, note = ${note || ''} WHERE id = ${Number(id)} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.delete('/api/transactions/:id', async (req, res) => {
+app.delete('/api/transactions/:id', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { id } = req.params;
-    await sql`DELETE FROM transactions WHERE id = ${Number(id)} AND "userId" = ${userId}`;
+    await sql`DELETE FROM transactions WHERE id = ${Number(id)} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -223,25 +240,23 @@ app.delete('/api/transactions/:id', async (req, res) => {
 });
 
 // ── Budgets ───────────────────────────────────────────
-app.get('/api/budgets', async (req, res) => {
+app.get('/api/budgets', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-    const result = await sql`SELECT * FROM budgets WHERE "userId" = ${userId}`;
+    const result = await sql`SELECT * FROM budgets WHERE "userId" = ${req.user.uuid}`;
     res.json(result.map((r) => ({ id: r.categoryId, categoryId: r.categoryId, monthlyLimit: Number(r.monthlyLimit) })));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/budgets', async (req, res) => {
+app.post('/api/budgets', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { categoryId, monthlyLimit } = req.body;
-    const existing = await sql`SELECT id FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${userId}`;
+    const existing = await sql`SELECT id FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
     if (existing.length > 0) {
-      await sql`UPDATE budgets SET "monthlyLimit" = ${monthlyLimit} WHERE "categoryId" = ${categoryId} AND "userId" = ${userId}`;
+      await sql`UPDATE budgets SET "monthlyLimit" = ${monthlyLimit} WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
     } else {
-      await sql`INSERT INTO budgets ("categoryId", "monthlyLimit", "userId") VALUES (${categoryId}, ${monthlyLimit}, ${userId})`;
+      await sql`INSERT INTO budgets ("categoryId", "monthlyLimit", "userId") VALUES (${categoryId}, ${monthlyLimit}, ${req.user.uuid})`;
     }
     res.json({ ok: true });
   } catch (err: any) {
@@ -249,11 +264,10 @@ app.post('/api/budgets', async (req, res) => {
   }
 });
 
-app.delete('/api/budgets/:categoryId', async (req, res) => {
+app.delete('/api/budgets/:categoryId', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { categoryId } = req.params;
-    await sql`DELETE FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${userId}`;
+    await sql`DELETE FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -261,10 +275,9 @@ app.delete('/api/budgets/:categoryId', async (req, res) => {
 });
 
 // ── Settings ──────────────────────────────────────────
-app.get('/api/settings', async (req, res) => {
+app.get('/api/settings', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-    const result = await sql`SELECT * FROM settings WHERE "userId" = ${userId}`;
+    const result = await sql`SELECT * FROM settings WHERE "userId" = ${req.user.uuid}`;
     const obj: Record<string, string> = {};
     result.forEach((r) => { obj[r.key] = r.value; });
     res.json(obj);
@@ -273,15 +286,14 @@ app.get('/api/settings', async (req, res) => {
   }
 });
 
-app.post('/api/settings', async (req, res) => {
+app.post('/api/settings', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
     const { key, value } = req.body;
-    const existing = await sql`SELECT id FROM settings WHERE key = ${key} AND "userId" = ${userId}`;
+    const existing = await sql`SELECT id FROM settings WHERE key = ${key} AND "userId" = ${req.user.uuid}`;
     if (existing.length > 0) {
-      await sql`UPDATE settings SET value = ${value} WHERE key = ${key} AND "userId" = ${userId}`;
+      await sql`UPDATE settings SET value = ${value} WHERE key = ${key} AND "userId" = ${req.user.uuid}`;
     } else {
-      await sql`INSERT INTO settings (key, value, "userId") VALUES (${key}, ${value}, ${userId})`;
+      await sql`INSERT INTO settings (key, value, "userId") VALUES (${key}, ${value}, ${req.user.uuid})`;
     }
     res.json({ ok: true });
   } catch (err: any) {
@@ -290,13 +302,12 @@ app.post('/api/settings', async (req, res) => {
 });
 
 // ── Reset ─────────────────────────────────────────────
-app.delete('/api/reset', async (req, res) => {
+app.delete('/api/reset', verifyToken, async (req: any, res) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
-    await sql`DELETE FROM transactions WHERE "userId" = ${userId}`;
-    await sql`DELETE FROM categories WHERE "userId" = ${userId}`;
-    await sql`DELETE FROM budgets WHERE "userId" = ${userId}`;
-    await sql`DELETE FROM settings WHERE "userId" = ${userId}`;
+    await sql`DELETE FROM transactions WHERE "userId" = ${req.user.uuid}`;
+    await sql`DELETE FROM categories WHERE "userId" = ${req.user.uuid}`;
+    await sql`DELETE FROM budgets WHERE "userId" = ${req.user.uuid}`;
+    await sql`DELETE FROM settings WHERE "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -304,8 +315,24 @@ app.delete('/api/reset', async (req, res) => {
 });
 
 // ── SSE Real-time Events ──────────────────────────────
-app.get('/api/events', async (req, res) => {
-  const userId = (req.query.userId as string) || (req.headers['x-user-id'] as string);
+app.get('/api/events', async (req: any, res) => {
+  let userId: string | null = null;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET) as { uuid: string };
+      userId = decoded.uuid;
+    } catch {}
+  }
+
+  if (!userId && req.query.token) {
+    try {
+      const decoded = jwt.verify(req.query.token as string, JWT_SECRET) as { uuid: string };
+      userId = decoded.uuid;
+    } catch {}
+  }
+
   if (!userId) return res.status(401).json({ error: 'Non autorise' });
 
   res.writeHead(200, {

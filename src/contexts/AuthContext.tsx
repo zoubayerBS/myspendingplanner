@@ -8,6 +8,7 @@ import {
   saveUser,
   getSavedUser,
   clearAuth,
+  getToken,
 } from '../db/auth';
 
 interface AuthContextType {
@@ -18,6 +19,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, name: string) => Promise<{ ok: boolean; needsActivation?: boolean }>;
   logout: () => void;
+  token: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -28,6 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   register: async () => ({ ok: false }),
   logout: () => {},
+  token: null,
 });
 
 export function useAuth() {
@@ -42,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = getSavedUser();
-    if (saved) {
+    if (saved?.token) {
       getMe(saved.id)
         .then((p) => {
           if (p && p.isActive) {
@@ -67,8 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const u = await signin(email, password);
-      setUser(u);
       saveUser(u);
+      setUser(u);
       const p = await getMe(u.id);
       setProfile(p);
       return true;
@@ -97,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, error, login, register, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, error, login, register, logout, token: getToken() }}>
       {children}
     </AuthContext.Provider>
   );

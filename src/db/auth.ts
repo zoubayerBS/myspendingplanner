@@ -8,6 +8,7 @@ export {
   saveUser,
   getSavedUser,
   clearAuth,
+  getToken,
   type AuthUser,
   type UserProfile,
 } from './api';
