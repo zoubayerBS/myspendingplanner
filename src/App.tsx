@@ -109,17 +109,24 @@ function AppContent() {
     const token = user?.token;
     if (!token) return;
 
-    const eventSource = new EventSource(
-      `${import.meta.env.VITE_API_URL || ''}/api/events?token=${encodeURIComponent(token)}`,
-    );
+    let eventSource: EventSource;
 
-    eventSource.onmessage = () => {
-      refreshData();
-    };
+    function connect() {
+      eventSource = new EventSource(
+        `${import.meta.env.VITE_API_URL || ''}/api/events?token=${encodeURIComponent(token)}`,
+      );
 
-    eventSource.onerror = () => {
-      eventSource.close();
-    };
+      eventSource.onmessage = () => {
+        refreshData();
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        setTimeout(connect, 5000);
+      };
+    }
+
+    connect();
 
     return () => {
       eventSource.close();
