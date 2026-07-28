@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import { neon } from '@neondatabase/serverless';
 
 const app = express();
@@ -46,10 +47,7 @@ function requireAdmin(req: any, res: any, next: any) {
   next();
 }
 
-async function sha256(message: string): Promise<string> {
-  const { createHash } = await import('crypto');
-  return createHash('sha256').update(message).digest('hex');
-}
+const BCRYPT_ROUNDS = 12;
 
 const DEFAULT_CATEGORIES = [
   { id: 'cat_food', name: 'Alimentation & Courses', icon: 'Utensils', type: 'expense', isDefault: true },
@@ -142,7 +140,7 @@ app.post('/api/auth/signup', async (req, res) => {
     const ADMIN_EMAIL = 'zouba196@gmail.com';
     const isAdminEmail = email.toLowerCase() === ADMIN_EMAIL;
 
-    const passwordHash = await sha256(password);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const uuid = crypto.randomUUID();
 
     const result = await sql`
@@ -170,8 +168,8 @@ app.post('/api/auth/signin', async (req, res) => {
     if (result.length === 0) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
 
     const user = result[0];
-    const passwordHash = await sha256(password);
-    if (user.passwordHash !== passwordHash) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
     if (!user.isActive) return res.status(403).json({ error: 'Votre compte est en attente d activation par l administrateur.' });
 
     const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
