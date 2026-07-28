@@ -2,6 +2,7 @@ export {
   apiSignup as signup,
   apiSignin as signin,
   apiGetMe as getMe,
+  apiLogout as logout,
   apiGetAllUsers,
   apiSetActive,
   apiSetRole,

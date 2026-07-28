@@ -5,6 +5,7 @@ import {
   signup,
   signin,
   getMe,
+  logout as apiLogout,
   saveUser,
   getSavedUser,
   clearAuth,
@@ -18,7 +19,7 @@ interface AuthContextType {
   error: string | null;
   login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, name: string) => Promise<{ ok: boolean; needsActivation?: boolean }>;
-  logout: () => void;
+  logout: () => Promise<void>;
   token: string | null;
 }
 
@@ -29,7 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   error: null,
   login: async () => false,
   register: async () => ({ ok: false }),
-  logout: () => {},
+  logout: async () => {},
   token: null,
 });
 
@@ -92,7 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await apiLogout();
     clearAuth();
     setUser(null);
     setProfile(null);

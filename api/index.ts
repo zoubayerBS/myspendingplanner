@@ -13,7 +13,7 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET environment variable is required and must be >= 32 characters');
 }
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'zouba196@gmail.com').split(',').map(e => e.trim().toLowerCase());
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean).map(e => e.trim().toLowerCase());
 
 const app = express();
 app.use(helmet());
@@ -24,6 +24,12 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Trop de tentatives. Reessayez plus tard.' },
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Trop de requetes. Reessayez plus tard.' },
 });
 
 let _sql: any = null;
@@ -41,8 +47,8 @@ function sql(strings: TemplateStringsArray, ...values: any[]) {
   return getSql()(strings, ...values);
 }
 
-function generateToken(user: { uuid: string; email: string; role: string }) {
-  return jwt.sign({ uuid: user.uuid, email: user.email, role: user.role }, JWT_SECRET!, { expiresIn: '7d' });
+function generateToken(user: { uuid: string; email: string; role: string; tokenVersion: number }) {
+  return jwt.sign({ uuid: user.uuid, email: user.email, role: user.role, tokenVersion: user.tokenVersion }, JWT_SECRET!, { expiresIn: '7d' });
 }
 
 function generateSseToken(uuid: string) {
@@ -53,7 +59,22 @@ function verifyToken(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Non autorise' });
   try {
-    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET!) as { uuid: string; email: string; role: string };
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET!) as { uuid: string; email: string; role: string; tokenVersion: number };
+    req.user = decoded;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Token invalide' });
+  }
+}
+
+async function verifyTokenWithRevocation(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Non autorise' });
+  try {
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET!) as { uuid: string; email: string; role: string; tokenVersion: number };
+    const result = await sql`SELECT "tokenVersion" FROM users WHERE uuid = ${decoded.uuid}`;
+    if (result.length === 0) return res.status(401).json({ error: 'Utilisateur non trouve' });
+    if (result[0].tokenVersion !== decoded.tokenVersion) return res.status(401).json({ error: 'Token revoque' });
     req.user = decoded;
     next();
   } catch {
@@ -105,6 +126,7 @@ async function initDB() {
       "passwordHash" TEXT NOT NULL,
       "isActive" BOOLEAN DEFAULT false,
       role TEXT DEFAULT 'user',
+      "tokenVersion" BIGINT DEFAULT 0,
       "createdAt" BIGINT DEFAULT 0
     )
   `;
@@ -177,7 +199,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
 
     await seedUserData(uuid);
     const user = result[0];
-    const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
+    const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role, tokenVersion: 0 });
     const sseToken = generateSseToken(user.uuid);
     res.json({ ...user, token, sseToken });
   } catch (err) {
@@ -208,7 +230,7 @@ app.post('/api/auth/signin', authLimiter, async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
     if (!user.isActive) return res.status(403).json({ error: 'Votre compte est en attente d activation par l administrateur.' });
 
-    const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
+    const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role, tokenVersion: user.tokenVersion || 0 });
     const sseToken = generateSseToken(user.uuid);
     res.json({ uuid: user.uuid, email: user.email, name: user.name, role: user.role, token, sseToken });
   } catch (err) {
@@ -218,7 +240,7 @@ app.post('/api/auth/signin', authLimiter, async (req, res) => {
 });
 
 // ── Auth (protected) ─────────────────────────────────
-app.get('/api/auth/me', verifyToken, async (req: any, res) => {
+app.get('/api/auth/me', verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const result = await sql`SELECT uuid, email, name, role, "isActive" FROM users WHERE uuid = ${req.user.uuid}`;
     if (result.length === 0) return res.status(404).json({ error: 'Utilisateur non trouve' });
@@ -228,8 +250,17 @@ app.get('/api/auth/me', verifyToken, async (req: any, res) => {
   }
 });
 
+app.post('/api/auth/logout', verifyTokenWithRevocation, async (req: any, res) => {
+  try {
+    await sql`UPDATE users SET "tokenVersion" = "tokenVersion" + 1 WHERE uuid = ${req.user.uuid}`;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
 // ── Users (admin) ─────────────────────────────────────
-app.get('/api/users', verifyToken, requireAdmin, async (_req, res) => {
+app.get('/api/users', apiLimiter, verifyTokenWithRevocation, requireAdmin, async (_req, res) => {
   try {
     const result = await sql`SELECT id, uuid, email, name, "isActive", role FROM users ORDER BY id`;
     res.json(result);
@@ -238,11 +269,19 @@ app.get('/api/users', verifyToken, requireAdmin, async (_req, res) => {
   }
 });
 
-app.patch('/api/users/:uuid/activate', verifyToken, requireAdmin, async (req, res) => {
+app.patch('/api/users/:uuid/activate', verifyTokenWithRevocation, requireAdmin, async (req: any, res) => {
   try {
     const { uuid } = req.params;
     const { isActive } = req.body;
     if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'Valeur invalide' });
+    if (uuid === req.user.uuid) return res.status(400).json({ error: 'Vous ne pouvez pas modifier votre propre statut' });
+    if (!isActive) {
+      const adminCount = await sql`SELECT COUNT(*)::int as count FROM users WHERE role = 'admin'`;
+      const targetUser = await sql`SELECT role FROM users WHERE uuid = ${uuid}`;
+      if (targetUser.length > 0 && targetUser[0].role === 'admin' && adminCount[0].count <= 1) {
+        return res.status(400).json({ error: 'Impossible de desactiver le dernier administrateur' });
+      }
+    }
     await sql`UPDATE users SET "isActive" = ${isActive} WHERE uuid = ${uuid}`;
     res.json({ ok: true });
   } catch (err) {
@@ -250,12 +289,20 @@ app.patch('/api/users/:uuid/activate', verifyToken, requireAdmin, async (req, re
   }
 });
 
-app.patch('/api/users/:uuid/role', verifyToken, requireAdmin, async (req, res) => {
+app.patch('/api/users/:uuid/role', verifyTokenWithRevocation, requireAdmin, async (req: any, res) => {
   try {
     const { uuid } = req.params;
     const { role } = req.body;
     const validRoles = ['user', 'admin'];
     if (!validRoles.includes(role)) return res.status(400).json({ error: 'Role invalide' });
+    if (uuid === req.user.uuid) return res.status(400).json({ error: 'Vous ne pouvez pas modifier votre propre role' });
+    if (role === 'user') {
+      const adminCount = await sql`SELECT COUNT(*)::int as count FROM users WHERE role = 'admin'`;
+      const targetUser = await sql`SELECT role FROM users WHERE uuid = ${uuid}`;
+      if (targetUser.length > 0 && targetUser[0].role === 'admin' && adminCount[0].count <= 1) {
+        return res.status(400).json({ error: 'Impossible de retirer le role du dernier administrateur' });
+      }
+    }
     await sql`UPDATE users SET role = ${role} WHERE uuid = ${uuid}`;
     res.json({ ok: true });
   } catch (err) {
@@ -264,7 +311,7 @@ app.patch('/api/users/:uuid/role', verifyToken, requireAdmin, async (req, res) =
 });
 
 // ── Categories ────────────────────────────────────────
-app.get('/api/categories', verifyToken, async (req: any, res) => {
+app.get('/api/categories', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM categories WHERE "userId" = ${req.user.uuid}`;
     res.json(result.map((r: any) => ({ id: r.cat_id, name: r.name, icon: r.icon, type: r.type, isDefault: r.isDefault })));
@@ -273,7 +320,7 @@ app.get('/api/categories', verifyToken, async (req: any, res) => {
   }
 });
 
-app.post('/api/categories', verifyToken, async (req: any, res) => {
+app.post('/api/categories', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { id, name, icon, type, isDefault } = req.body;
     if (!id || !name || !icon || !type) return res.status(400).json({ error: 'Champs requis manquants' });
@@ -287,7 +334,7 @@ app.post('/api/categories', verifyToken, async (req: any, res) => {
   }
 });
 
-app.post('/api/categories/bulk', verifyToken, async (req: any, res) => {
+app.post('/api/categories/bulk', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { categories } = req.body;
     if (!Array.isArray(categories)) return res.status(400).json({ error: 'Format invalide' });
@@ -300,7 +347,7 @@ app.post('/api/categories/bulk', verifyToken, async (req: any, res) => {
   }
 });
 
-app.delete('/api/categories/:catId', verifyToken, async (req: any, res) => {
+app.delete('/api/categories/:catId', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { catId } = req.params;
     await sql`DELETE FROM categories WHERE cat_id = ${catId} AND "userId" = ${req.user.uuid}`;
@@ -311,7 +358,7 @@ app.delete('/api/categories/:catId', verifyToken, async (req: any, res) => {
 });
 
 // ── Transactions ──────────────────────────────────────
-app.get('/api/transactions', verifyToken, async (req: any, res) => {
+app.get('/api/transactions', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM transactions WHERE "userId" = ${req.user.uuid} ORDER BY "createdAt" DESC`;
     res.json(result.map((r: any) => ({ id: r.id, type: r.type, amount: Number(r.amount), categoryId: r.categoryId, date: r.date, note: r.note, createdAt: Number(r.createdAt) })));
@@ -320,7 +367,7 @@ app.get('/api/transactions', verifyToken, async (req: any, res) => {
   }
 });
 
-app.post('/api/transactions', verifyToken, async (req: any, res) => {
+app.post('/api/transactions', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { type, amount, categoryId, date, note } = req.body;
     const validTypes = ['income', 'expense'];
@@ -336,13 +383,16 @@ app.post('/api/transactions', verifyToken, async (req: any, res) => {
   }
 });
 
-app.patch('/api/transactions/:id', verifyToken, async (req: any, res) => {
+app.patch('/api/transactions/:id', verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { id } = req.params;
     const { type, amount, categoryId, date, note } = req.body;
     const validTypes = ['income', 'expense'];
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Type invalide' });
     if (typeof amount !== 'number' || amount <= 0 || amount > 1e12) return res.status(400).json({ error: 'Montant invalide' });
+    if (!categoryId || typeof categoryId !== 'string') return res.status(400).json({ error: 'Categorie invalide' });
+    if (!date || typeof date !== 'string' || !/^\d{4}-\d{2}/.test(date)) return res.status(400).json({ error: 'Date invalide' });
+    if (note && typeof note === 'string' && note.length > 500) return res.status(400).json({ error: 'Note trop longue' });
     await sql`UPDATE transactions SET type = ${type}, amount = ${amount}, "categoryId" = ${categoryId}, date = ${date}, note = ${note || ''} WHERE id = ${Number(id)} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
   } catch (err) {
@@ -350,7 +400,7 @@ app.patch('/api/transactions/:id', verifyToken, async (req: any, res) => {
   }
 });
 
-app.delete('/api/transactions/:id', verifyToken, async (req: any, res) => {
+app.delete('/api/transactions/:id', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { id } = req.params;
     await sql`DELETE FROM transactions WHERE id = ${Number(id)} AND "userId" = ${req.user.uuid}`;
@@ -361,7 +411,7 @@ app.delete('/api/transactions/:id', verifyToken, async (req: any, res) => {
 });
 
 // ── Budgets ───────────────────────────────────────────
-app.get('/api/budgets', verifyToken, async (req: any, res) => {
+app.get('/api/budgets', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM budgets WHERE "userId" = ${req.user.uuid}`;
     res.json(result.map((r: any) => ({ id: r.categoryId, categoryId: r.categoryId, monthlyLimit: Number(r.monthlyLimit) })));
@@ -370,7 +420,7 @@ app.get('/api/budgets', verifyToken, async (req: any, res) => {
   }
 });
 
-app.post('/api/budgets', verifyToken, async (req: any, res) => {
+app.post('/api/budgets', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { categoryId, monthlyLimit } = req.body;
     if (!categoryId || typeof monthlyLimit !== 'number' || monthlyLimit <= 0) return res.status(400).json({ error: 'Parametres invalides' });
@@ -386,7 +436,7 @@ app.post('/api/budgets', verifyToken, async (req: any, res) => {
   }
 });
 
-app.delete('/api/budgets/:categoryId', verifyToken, async (req: any, res) => {
+app.delete('/api/budgets/:categoryId', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { categoryId } = req.params;
     await sql`DELETE FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
@@ -397,7 +447,7 @@ app.delete('/api/budgets/:categoryId', verifyToken, async (req: any, res) => {
 });
 
 // ── Settings ──────────────────────────────────────────
-app.get('/api/settings', verifyToken, async (req: any, res) => {
+app.get('/api/settings', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM settings WHERE "userId" = ${req.user.uuid}`;
     const obj: Record<string, string> = {};
@@ -408,7 +458,7 @@ app.get('/api/settings', verifyToken, async (req: any, res) => {
   }
 });
 
-app.post('/api/settings', verifyToken, async (req: any, res) => {
+app.post('/api/settings', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     const { key, value } = req.body;
     if (!key || typeof value !== 'string') return res.status(400).json({ error: 'Parametres invalides' });
@@ -425,7 +475,7 @@ app.post('/api/settings', verifyToken, async (req: any, res) => {
 });
 
 // ── Reset ─────────────────────────────────────────────
-app.delete('/api/reset', verifyToken, async (req: any, res) => {
+app.delete('/api/reset', apiLimiter, verifyTokenWithRevocation, async (req: any, res) => {
   try {
     await sql`DELETE FROM transactions WHERE "userId" = ${req.user.uuid}`;
     await sql`DELETE FROM categories WHERE "userId" = ${req.user.uuid}`;

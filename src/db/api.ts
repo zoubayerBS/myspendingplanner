@@ -43,6 +43,17 @@ export function clearAuth() {
   localStorage.removeItem(USER_KEY);
 }
 
+export async function apiLogout(): Promise<void> {
+  const token = getToken();
+  if (!token) return;
+  try {
+    await fetch(`${API_URL}/api/auth/logout`, {
+      method: 'POST',
+      headers: getHeaders(token),
+    });
+  } catch {}
+}
+
 // ── Auth ──────────────────────────────────────────────
 export async function apiSignup(email: string, password: string, name: string): Promise<AuthUser> {
   const res = await fetch(`${API_URL}/api/auth/signup`, {
