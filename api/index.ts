@@ -4,16 +4,27 @@ import cors from 'cors';
 import helmet from 'helmet';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import rateLimit from 'express-rate-limit';
 import { neon } from '@neondatabase/serverless';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET environment variable is required and must be >= 32 characters');
+}
+
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'zouba196@gmail.com').split(',').map(e => e.trim().toLowerCase());
 
 const app = express();
 app.use(helmet());
 app.use(cors({ origin: ALLOWED_ORIGIN }));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Trop de tentatives. Reessayez plus tard.' },
+});
 
 let _sql: any = null;
 
@@ -31,14 +42,18 @@ function sql(strings: TemplateStringsArray, ...values: any[]) {
 }
 
 function generateToken(user: { uuid: string; email: string; role: string }) {
-  return jwt.sign({ uuid: user.uuid, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ uuid: user.uuid, email: user.email, role: user.role }, JWT_SECRET!, { expiresIn: '7d' });
+}
+
+function generateSseToken(uuid: string) {
+  return jwt.sign({ uuid, aud: 'sse' }, JWT_SECRET!, { expiresIn: '5m' });
 }
 
 function verifyToken(req: any, res: any, next: any) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Non autorise' });
   try {
-    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET) as { uuid: string; email: string; role: string };
+    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET!) as { uuid: string; email: string; role: string };
     req.user = decoded;
     next();
   } catch {
@@ -49,6 +64,10 @@ function verifyToken(req: any, res: any, next: any) {
 function requireAdmin(req: any, res: any, next: any) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Acces interdit' });
   next();
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 255;
 }
 
 const BCRYPT_ROUNDS = 12;
@@ -130,19 +149,22 @@ async function initDB() {
   `;
 }
 
-// ── Auth (public) ────────────────────────────────────
-app.post('/api/auth/signup', async (req, res) => {
+// ── Auth (public + rate limited) ──────────────────────
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   try {
     const { email, password, name } = req.body;
     if (!email || !password || !name) return res.status(400).json({ error: 'Champs requis manquants' });
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Email invalide' });
+    if (typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caracteres' });
+    if (password.length > 128) return res.status(400).json({ error: 'Mot de passe trop long' });
+    if (typeof name !== 'string' || name.length > 100) return res.status(400).json({ error: 'Nom invalide' });
 
     const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
     if (existing.length > 0) return res.status(409).json({ error: 'Un compte avec cet email existe deja.' });
 
     const countResult = await sql`SELECT COUNT(*)::int as count FROM users`;
     const isFirstUser = countResult[0].count === 0;
-    const ADMIN_EMAIL = 'zouba196@gmail.com';
-    const isAdminEmail = email.toLowerCase() === ADMIN_EMAIL;
+    const isAdminEmail = ADMIN_EMAILS.includes(email.toLowerCase());
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const uuid = crypto.randomUUID();
@@ -156,14 +178,15 @@ app.post('/api/auth/signup', async (req, res) => {
     await seedUserData(uuid);
     const user = result[0];
     const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
-    res.json({ ...user, token });
-  } catch (err: any) {
+    const sseToken = generateSseToken(user.uuid);
+    res.json({ ...user, token, sseToken });
+  } catch (err) {
     console.error('Signup error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
-app.post('/api/auth/signin', async (req, res) => {
+app.post('/api/auth/signin', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Champs requis manquants' });
@@ -186,10 +209,11 @@ app.post('/api/auth/signin', async (req, res) => {
     if (!user.isActive) return res.status(403).json({ error: 'Votre compte est en attente d activation par l administrateur.' });
 
     const token = generateToken({ uuid: user.uuid, email: user.email, role: user.role });
-    res.json({ uuid: user.uuid, email: user.email, name: user.name, role: user.role, token });
-  } catch (err: any) {
+    const sseToken = generateSseToken(user.uuid);
+    res.json({ uuid: user.uuid, email: user.email, name: user.name, role: user.role, token, sseToken });
+  } catch (err) {
     console.error('Signin error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -197,10 +221,10 @@ app.post('/api/auth/signin', async (req, res) => {
 app.get('/api/auth/me', verifyToken, async (req: any, res) => {
   try {
     const result = await sql`SELECT uuid, email, name, role, "isActive" FROM users WHERE uuid = ${req.user.uuid}`;
-    if (result.length === 0) return res.status(404).json({ error: 'User not found' });
+    if (result.length === 0) return res.status(404).json({ error: 'Utilisateur non trouve' });
     res.json(result[0]);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -209,8 +233,8 @@ app.get('/api/users', verifyToken, requireAdmin, async (_req, res) => {
   try {
     const result = await sql`SELECT id, uuid, email, name, "isActive", role FROM users ORDER BY id`;
     res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -218,10 +242,11 @@ app.patch('/api/users/:uuid/activate', verifyToken, requireAdmin, async (req, re
   try {
     const { uuid } = req.params;
     const { isActive } = req.body;
+    if (typeof isActive !== 'boolean') return res.status(400).json({ error: 'Valeur invalide' });
     await sql`UPDATE users SET "isActive" = ${isActive} WHERE uuid = ${uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -229,10 +254,12 @@ app.patch('/api/users/:uuid/role', verifyToken, requireAdmin, async (req, res) =
   try {
     const { uuid } = req.params;
     const { role } = req.body;
+    const validRoles = ['user', 'admin'];
+    if (!validRoles.includes(role)) return res.status(400).json({ error: 'Role invalide' });
     await sql`UPDATE users SET role = ${role} WHERE uuid = ${uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -241,30 +268,35 @@ app.get('/api/categories', verifyToken, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM categories WHERE "userId" = ${req.user.uuid}`;
     res.json(result.map((r: any) => ({ id: r.cat_id, name: r.name, icon: r.icon, type: r.type, isDefault: r.isDefault })));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
 app.post('/api/categories', verifyToken, async (req: any, res) => {
   try {
     const { id, name, icon, type, isDefault } = req.body;
+    if (!id || !name || !icon || !type) return res.status(400).json({ error: 'Champs requis manquants' });
+    const validTypes = ['income', 'expense'];
+    if (!validTypes.includes(type)) return res.status(400).json({ error: 'Type invalide' });
+    if (typeof name !== 'string' || name.length > 100) return res.status(400).json({ error: 'Nom invalide' });
     await sql`INSERT INTO categories (cat_id, name, icon, type, "isDefault", "userId") VALUES (${id}, ${name}, ${icon}, ${type}, ${isDefault || false}, ${req.user.uuid})`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
 app.post('/api/categories/bulk', verifyToken, async (req: any, res) => {
   try {
     const { categories } = req.body;
+    if (!Array.isArray(categories)) return res.status(400).json({ error: 'Format invalide' });
     for (const c of categories) {
       await sql`INSERT INTO categories (cat_id, name, icon, type, "isDefault", "userId") VALUES (${c.id}, ${c.name}, ${c.icon}, ${c.type}, ${c.isDefault || false}, ${req.user.uuid})`;
     }
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -273,8 +305,8 @@ app.delete('/api/categories/:catId', verifyToken, async (req: any, res) => {
     const { catId } = req.params;
     await sql`DELETE FROM categories WHERE cat_id = ${catId} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -283,18 +315,24 @@ app.get('/api/transactions', verifyToken, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM transactions WHERE "userId" = ${req.user.uuid} ORDER BY "createdAt" DESC`;
     res.json(result.map((r: any) => ({ id: r.id, type: r.type, amount: Number(r.amount), categoryId: r.categoryId, date: r.date, note: r.note, createdAt: Number(r.createdAt) })));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
 app.post('/api/transactions', verifyToken, async (req: any, res) => {
   try {
     const { type, amount, categoryId, date, note } = req.body;
+    const validTypes = ['income', 'expense'];
+    if (!validTypes.includes(type)) return res.status(400).json({ error: 'Type invalide' });
+    if (typeof amount !== 'number' || amount <= 0 || amount > 1e12) return res.status(400).json({ error: 'Montant invalide' });
+    if (!categoryId || typeof categoryId !== 'string') return res.status(400).json({ error: 'Categorie invalide' });
+    if (!date || typeof date !== 'string' || !/^\d{4}-\d{2}/.test(date)) return res.status(400).json({ error: 'Date invalide' });
+    if (note && typeof note === 'string' && note.length > 500) return res.status(400).json({ error: 'Note trop longue' });
     const result = await sql`INSERT INTO transactions (type, amount, "categoryId", date, note, "createdAt", "userId") VALUES (${type}, ${amount}, ${categoryId}, ${date}, ${note || ''}, ${Date.now()}, ${req.user.uuid}) RETURNING id`;
     res.json({ id: result[0].id });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -302,10 +340,13 @@ app.patch('/api/transactions/:id', verifyToken, async (req: any, res) => {
   try {
     const { id } = req.params;
     const { type, amount, categoryId, date, note } = req.body;
+    const validTypes = ['income', 'expense'];
+    if (!validTypes.includes(type)) return res.status(400).json({ error: 'Type invalide' });
+    if (typeof amount !== 'number' || amount <= 0 || amount > 1e12) return res.status(400).json({ error: 'Montant invalide' });
     await sql`UPDATE transactions SET type = ${type}, amount = ${amount}, "categoryId" = ${categoryId}, date = ${date}, note = ${note || ''} WHERE id = ${Number(id)} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -314,8 +355,8 @@ app.delete('/api/transactions/:id', verifyToken, async (req: any, res) => {
     const { id } = req.params;
     await sql`DELETE FROM transactions WHERE id = ${Number(id)} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -324,14 +365,15 @@ app.get('/api/budgets', verifyToken, async (req: any, res) => {
   try {
     const result = await sql`SELECT * FROM budgets WHERE "userId" = ${req.user.uuid}`;
     res.json(result.map((r: any) => ({ id: r.categoryId, categoryId: r.categoryId, monthlyLimit: Number(r.monthlyLimit) })));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
 app.post('/api/budgets', verifyToken, async (req: any, res) => {
   try {
     const { categoryId, monthlyLimit } = req.body;
+    if (!categoryId || typeof monthlyLimit !== 'number' || monthlyLimit <= 0) return res.status(400).json({ error: 'Parametres invalides' });
     const existing = await sql`SELECT id FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
     if (existing.length > 0) {
       await sql`UPDATE budgets SET "monthlyLimit" = ${monthlyLimit} WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
@@ -339,8 +381,8 @@ app.post('/api/budgets', verifyToken, async (req: any, res) => {
       await sql`INSERT INTO budgets ("categoryId", "monthlyLimit", "userId") VALUES (${categoryId}, ${monthlyLimit}, ${req.user.uuid})`;
     }
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -349,8 +391,8 @@ app.delete('/api/budgets/:categoryId', verifyToken, async (req: any, res) => {
     const { categoryId } = req.params;
     await sql`DELETE FROM budgets WHERE "categoryId" = ${categoryId} AND "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -361,14 +403,15 @@ app.get('/api/settings', verifyToken, async (req: any, res) => {
     const obj: Record<string, string> = {};
     result.forEach((r: any) => { obj[r.key] = r.value; });
     res.json(obj);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
 app.post('/api/settings', verifyToken, async (req: any, res) => {
   try {
     const { key, value } = req.body;
+    if (!key || typeof value !== 'string') return res.status(400).json({ error: 'Parametres invalides' });
     const existing = await sql`SELECT id FROM settings WHERE key = ${key} AND "userId" = ${req.user.uuid}`;
     if (existing.length > 0) {
       await sql`UPDATE settings SET value = ${value} WHERE key = ${key} AND "userId" = ${req.user.uuid}`;
@@ -376,8 +419,8 @@ app.post('/api/settings', verifyToken, async (req: any, res) => {
       await sql`INSERT INTO settings (key, value, "userId") VALUES (${key}, ${value}, ${req.user.uuid})`;
     }
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
@@ -389,27 +432,27 @@ app.delete('/api/reset', verifyToken, async (req: any, res) => {
     await sql`DELETE FROM budgets WHERE "userId" = ${req.user.uuid}`;
     await sql`DELETE FROM settings WHERE "userId" = ${req.user.uuid}`;
     res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
 
-// ── SSE Real-time Events ──────────────────────────────
+// ── SSE Real-time Events (short-lived token) ──────────
 app.get('/api/events', async (req: any, res) => {
   let userId: string | null = null;
 
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     try {
-      const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET) as { uuid: string };
+      const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET!) as { uuid: string };
       userId = decoded.uuid;
     } catch {}
   }
 
   if (!userId && req.query.token) {
     try {
-      const decoded = jwt.verify(req.query.token as string, JWT_SECRET) as { uuid: string };
-      userId = decoded.uuid;
+      const decoded = jwt.verify(req.query.token as string, JWT_SECRET!) as { uuid: string; aud?: string };
+      if (decoded.aud === 'sse') userId = decoded.uuid;
     } catch {}
   }
 
@@ -463,7 +506,7 @@ export default async function handler(req: any, res: any) {
   } catch (err: any) {
     console.error('Handler error:', err);
     if (!res.headersSent) {
-      res.status(500).json({ error: err?.message || 'Internal server error' });
+      res.status(500).json({ error: 'Erreur interne du serveur' });
     }
   }
 }

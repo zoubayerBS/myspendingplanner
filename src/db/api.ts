@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string;
   name: string;
   token: string;
+  sseToken: string;
 }
 
 export interface UserProfile {
@@ -51,7 +52,7 @@ export async function apiSignup(email: string, password: string, name: string): 
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Erreur inscription');
-  return { id: data.uuid, email: data.email, name: data.name, token: data.token };
+  return { id: data.uuid, email: data.email, name: data.name, token: data.token, sseToken: data.sseToken };
 }
 
 export async function apiSignin(email: string, password: string): Promise<AuthUser> {
@@ -62,7 +63,7 @@ export async function apiSignin(email: string, password: string): Promise<AuthUs
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Erreur connexion');
-  return { id: data.uuid, email: data.email, name: data.name, token: data.token };
+  return { id: data.uuid, email: data.email, name: data.name, token: data.token, sseToken: data.sseToken };
 }
 
 export async function apiGetMe(_userId: string): Promise<UserProfile> {

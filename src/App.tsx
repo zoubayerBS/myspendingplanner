@@ -106,14 +106,14 @@ function AppContent() {
   useEffect(() => {
     if (!userId || !isReady) return;
 
-    const token = user?.token;
-    if (!token) return;
+    const sseToken = user?.sseToken;
+    if (!sseToken) return;
 
     let eventSource: EventSource;
 
     function connect() {
       eventSource = new EventSource(
-        `${import.meta.env.VITE_API_URL || ''}/api/events?token=${encodeURIComponent(token)}`,
+        `${import.meta.env.VITE_API_URL || ''}/api/events?token=${encodeURIComponent(sseToken)}`,
       );
 
       eventSource.onmessage = () => {
