@@ -5,8 +5,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { sql, initDB } from './db';
 
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
