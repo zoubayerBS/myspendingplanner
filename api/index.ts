@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { neon } from '@neondatabase/serverless';
@@ -8,6 +9,7 @@ import { neon } from '@neondatabase/serverless';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
 
 const app = express();
+app.use(helmet());
 app.use(cors({ origin: ALLOWED_ORIGIN }));
 app.use(express.json());
 
