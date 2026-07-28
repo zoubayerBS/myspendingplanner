@@ -99,7 +99,16 @@ app.post('/api/auth/signin', async (req, res) => {
     if (result.length === 0) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
 
     const user = result[0];
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    let valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid && user.passwordHash.length === 64) {
+      const { createHash } = await import('crypto');
+      const sha = createHash('sha256').update(password).digest('hex');
+      if (sha === user.passwordHash) {
+        valid = true;
+        const newHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        await sql`UPDATE users SET "passwordHash" = ${newHash} WHERE uuid = ${user.uuid}`;
+      }
+    }
     if (!valid) return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
     if (!user.isActive) return res.status(403).json({ error: 'Votre compte est en attente d activation par l administrateur.' });
 
