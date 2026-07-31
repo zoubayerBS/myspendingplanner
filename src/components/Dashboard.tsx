@@ -3,6 +3,7 @@ import { Plus, ChevronRight } from 'lucide-react';
 import { Transaction, Category, Budget, CurrencyCode } from '../types';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { CategoryIcon } from '../utils/icons';
+import { DailyActivityWidget } from './DailyActivityWidget';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -22,7 +23,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   currency,
   onOpenQuickAdd,
   onNavigateTab,
-  onEditTransaction
+  onEditTransaction,
+  selectedMonth,
 }) => {
   const categoriesMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
 
@@ -80,6 +82,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Daily Activity */}
+      <DailyActivityWidget
+        transactions={transactions}
+        categories={categories}
+        currency={currency}
+        selectedMonth={selectedMonth}
+        onEditTransaction={onEditTransaction}
+      />
 
       {/* Categories */}
       <div className="bg-white rounded-xl p-5 border border-dashed border-slate-200">

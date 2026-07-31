@@ -29,8 +29,8 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Skip Vite dev deps and HMR websocket
-  if (url.pathname.includes('/node_modules/.vite/') || url.pathname.includes('/@vite/')) {
+  // Skip Vite dev deps, HMR websocket, and API requests
+  if (url.pathname.startsWith('/api/') || url.pathname.includes('/node_modules/.vite/') || url.pathname.includes('/@vite/')) {
     return;
   }
 

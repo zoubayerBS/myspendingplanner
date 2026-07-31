@@ -27,9 +27,12 @@ export async function initDB() {
       "passwordHash" TEXT NOT NULL,
       "isActive" BOOLEAN DEFAULT false,
       role TEXT DEFAULT 'user',
+      "tokenVersion" INTEGER DEFAULT 0,
       "createdAt" BIGINT DEFAULT 0
     )
   `;
+
+  await db`ALTER TABLE users ADD COLUMN IF NOT EXISTS "tokenVersion" INTEGER DEFAULT 0`;
 
   await db`
     CREATE TABLE IF NOT EXISTS categories (

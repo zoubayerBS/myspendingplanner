@@ -7,7 +7,7 @@ import bcrypt from 'bcrypt';
 import rateLimit from 'express-rate-limit';
 import { neon } from '@neondatabase/serverless';
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
+const ALLOWED_ORIGIN = (process.env.ALLOWED_ORIGIN || 'http://localhost:3000').split(',').map(o => o.trim());
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET environment variable is required and must be >= 32 characters');
