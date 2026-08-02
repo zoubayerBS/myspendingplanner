@@ -1,69 +1,72 @@
 import React from 'react';
-import { LayoutDashboard, ArrowLeftRight, PieChart, Tag, SlidersHorizontal, Plus, Wallet, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, PieChart, SlidersHorizontal, Plus, Wallet, LogOut, Clock } from 'lucide-react';
 import { AuthUser } from '../db/auth';
 
-export type TabType = 'dashboard' | 'transactions' | 'budgets' | 'categories' | 'settings';
+export type TabType = 'dashboard' | 'transactions' | 'timeline' | 'budgets' | 'settings';
 
 interface NavigationProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   onOpenQuickAdd: () => void;
   onLogout: () => void;
-  onAdmin: () => void;
   user: AuthUser;
-  isAdmin?: boolean;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab, onOpenQuickAdd, onLogout, onAdmin, user, isAdmin }) => {
+export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab, onOpenQuickAdd, onLogout, user }) => {
   const navItems = [
     { id: 'dashboard' as TabType, label: 'Accueil', icon: LayoutDashboard },
     { id: 'transactions' as TabType, label: 'Transactions', icon: ArrowLeftRight },
+    { id: 'timeline' as TabType, label: 'Timeline', icon: Clock },
     { id: 'budgets' as TabType, label: 'Budgets', icon: PieChart },
-    { id: 'categories' as TabType, label: 'Categories', icon: Tag },
     { id: 'settings' as TabType, label: 'Reglages', icon: SlidersHorizontal },
   ];
 
   return (
     <>
-      {/* Mobile Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white border-t border-slate-100">
-        <div className="flex items-center overflow-x-auto px-2 py-2 gap-1 scrollbar-none">
-          {navItems.map((item) => {
+      {/* Mobile Floating Dock */}
+      <div className="fixed bottom-4 left-3 right-3 z-40 md:hidden">
+        <div className="bg-white/80 backdrop-blur-xl shadow-lg shadow-black/10 rounded-3xl px-2 py-2 flex items-center justify-around">
+          {navItems.slice(0, 2).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors shrink-0 ${
-                  isActive ? 'text-[#1B3022]' : 'text-slate-400'
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                  isActive ? 'bg-[#1B3022] text-white' : 'text-slate-400 hover:bg-slate-100'
                 }`}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium whitespace-nowrap">{item.label}</span>
               </button>
             );
           })}
-          {isAdmin && (
-            <button
-              onClick={onAdmin}
-              className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-colors text-blue-500 shrink-0"
-            >
-              <Shield className="w-5 h-5" />
-              <span className="text-[10px] font-medium whitespace-nowrap">Admin</span>
-            </button>
-          )}
+
+          <button
+            onClick={onOpenQuickAdd}
+            className="w-11 h-11 rounded-2xl bg-[#1B3022] text-white flex items-center justify-center shadow-md shadow-[#1B3022]/30 -mt-5"
+            aria-label="Ajouter"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+
+          {navItems.slice(2).map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                  isActive ? 'bg-[#1B3022] text-white' : 'text-slate-400 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+              </button>
+            );
+          })}
         </div>
       </div>
-
-      {/* Mobile FAB */}
-      <button
-        onClick={onOpenQuickAdd}
-        className="fixed bottom-20 right-4 z-40 md:hidden w-12 h-12 bg-[#1B3022] text-white rounded-full shadow-lg flex items-center justify-center"
-        aria-label="Ajouter"
-      >
-        <Plus className="w-5 h-5" />
-      </button>
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-56 bg-white border-r border-slate-100 min-h-screen fixed left-0 top-0 bottom-0 z-30 p-4">
@@ -107,15 +110,6 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab,
           <div className="px-3">
             <p className="text-xs text-slate-400 truncate">{user.email}</p>
           </div>
-          {isAdmin && (
-            <button
-              onClick={onAdmin}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors"
-            >
-              <Shield className="w-4 h-4" />
-              <span>Admin</span>
-            </button>
-          )}
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"

@@ -18,21 +18,18 @@ import { Category, Transaction, Budget, CurrencyCode } from './types';
 import { getCurrentYearMonth } from './utils/formatters';
 
 import AuthView from './components/AuthView';
-import AdminView from './components/AdminView';
 import { Navigation, TabType } from './components/Navigation';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { TransactionList } from './components/TransactionList';
 import { BudgetManager } from './components/BudgetManager';
-import { CategoryManager } from './components/CategoryManager';
 import { SettingsView } from './components/SettingsView';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { PullToRefresh } from './components/PullToRefresh';
+import { TimelineView } from './components/TimelineView';
 
 function AppContent() {
   const { user, profile, loading: authLoading, logout } = useAuth();
-
-  const [showAdmin, setShowAdmin] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentYearMonth());
@@ -254,11 +251,7 @@ function AppContent() {
   }
 
   if (!user) {
-    return <AuthView onNavigateToAdmin={() => setShowAdmin(true)} />;
-  }
-
-  if (showAdmin) {
-    return <AdminView onBack={() => setShowAdmin(false)} />;
+    return <AuthView />;
   }
 
   if (!profile?.isActive) {
@@ -300,9 +293,7 @@ function AppContent() {
         setActiveTab={setActiveTab}
         onOpenQuickAdd={handleOpenQuickAdd}
         onLogout={handleLogout}
-        onAdmin={() => setShowAdmin(true)}
         user={user}
-        isAdmin={profile?.role === 'admin'}
       />
 
       <div className="min-h-screen flex flex-col">
@@ -340,6 +331,15 @@ function AppContent() {
             />
           )}
 
+          {activeTab === 'timeline' && (
+            <TimelineView
+              transactions={allTransactions}
+              categories={categories}
+              currency={currency}
+              onEditTransaction={handleEditTransaction}
+            />
+          )}
+
           {activeTab === 'budgets' && (
             <BudgetManager
               budgets={budgets}
@@ -351,14 +351,6 @@ function AppContent() {
             />
           )}
 
-          {activeTab === 'categories' && (
-            <CategoryManager
-              categories={categories}
-              onAddCategory={handleAddCategory}
-              onDeleteCategory={handleDeleteCategory}
-            />
-          )}
-
           {activeTab === 'settings' && (
             <SettingsView
               currency={currency}
@@ -366,6 +358,10 @@ function AppContent() {
               onUpdateCurrency={handleUpdateCurrency}
               onResetDatabase={handleResetDatabase}
               onReloadData={refreshData}
+              categories={categories}
+              onAddCategory={handleAddCategory}
+              onDeleteCategory={handleDeleteCategory}
+              isAdmin={profile?.role === 'admin'}
             />
           )}
           </PullToRefresh>

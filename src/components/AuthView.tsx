@@ -2,11 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import AnimatedLogo from './AnimatedLogo';
 
-interface Props {
-  onNavigateToAdmin?: () => void;
-}
+interface Props {}
 
-export default function AuthView({ onNavigateToAdmin }: Props) {
+export default function AuthView() {
   const { login, register, error, loading } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
@@ -106,15 +104,6 @@ export default function AuthView({ onNavigateToAdmin }: Props) {
               {isRegister ? 'Se connecter' : "S'inscrire"}
             </button>
           </div>
-        </div>
-
-        <div className="text-center mt-4">
-          <button
-            onClick={onNavigateToAdmin}
-            className="text-xs text-gray-400 hover:text-gray-600"
-          >
-            Admin
-          </button>
         </div>
       </div>
     </div>

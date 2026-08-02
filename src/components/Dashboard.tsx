@@ -60,7 +60,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     .sort((a, b) => b.total - a.total);
 
   const recentTransactions = [...transactions]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
     .slice(0, 5);
 
   return (
